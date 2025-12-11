@@ -92,6 +92,42 @@
                 </dependencies>
             </plugin>
             <plugin>
+                <groupId>org.openapitools</groupId>
+                <artifactId>openapi-generator-maven-plugin</artifactId>
+                <version>7.10.0</version>
+                <executions>
+                    <execution>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>generate</goal>
+                        </goals>
+                        <configuration>
+                            <skipIfSpecIsUnchanged>true</skipIfSpecIsUnchanged>
+                            <inputSpec>${project.basedir}/src/main/resources/api_spec.yaml</inputSpec>
+                            <generatorName>java</generatorName>
+                            <configOptions>
+                                <library>okhttp-gson</library>
+                                <dateLibrary>java8</dateLibrary>
+                                <sourceFolder>src/main/java</sourceFolder>
+                                <containerDefaultToNull>true</containerDefaultToNull>
+                            </configOptions>
+                            <apiPackage>ai.wavespeed.openapi.client.api</apiPackage>
+                            <modelPackage>ai.wavespeed.openapi.client.model</modelPackage>
+                            <invokerPackage>ai.wavespeed.openapi.client</invokerPackage>
+                            <packageName>ai.wavespeed.openapi.client</packageName>
+                            <generateApiTests>false</generateApiTests>
+                            <generateModelTests>false</generateModelTests>
+                            <generateModels>true</generateModels>
+                            <generateApiDocumentation>false</generateApiDocumentation>
+                            <generateApis>true</generateApis>
+                            <generateAliasAsModel>true</generateAliasAsModel>
+                            <generateSupportingFiles>true</generateSupportingFiles>
+                            <output>${project.basedir}</output>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
                 <artifactId>maven-dependency-plugin</artifactId>
                 <version>3.6.1</version>
                 <executions>
@@ -318,6 +354,23 @@
             <version>${junit-platform-runner.version}</version>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>mockwebserver</artifactId>
+            <version>${okhttp-version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <version>1.18.30</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-simple</artifactId>
+            <version>1.7.36</version>
+        </dependency>
     </dependencies>
     <properties>
         <java.version>1.8</java.version>
@@ -332,6 +385,7 @@
         <beanvalidation-version>2.0.2</beanvalidation-version>
         <junit-version>5.10.3</junit-version>
         <junit-platform-runner.version>1.10.0</junit-platform-runner.version>
+        <mockwebserver-version>4.12.0</mockwebserver-version>
         <jakarta.ws.rs-api-version>2.1.6</jakarta.ws.rs-api-version>
         <jsr311-api-version>1.1.1</jsr311-api-version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>

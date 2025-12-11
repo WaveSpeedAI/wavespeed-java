@@ -1,0 +1,215 @@
+openapi: 3.0.0
+info:
+  title: WaveSpeed AI API
+  description: API for generating images using WaveSpeed AI
+  version: 0.0.1
+servers:
+  - url: https://api.wavespeed.ai/api/v2
+paths:
+  /{model_id}:
+    post:
+      summary: Generate an image using the specified model
+      operationId: createPredictionData
+      description: |
+        This endpoint generates an image based on the provided parameters.
+        The `model_id` is a required path parameter specifying the model to use.
+        The request body can contain various key-value pairs to customize the model generation process.
+      parameters:
+        - name: model_id
+          in: path
+          required: true
+          description: The ID of the model to use for image generation
+          schema:
+            type: string
+        - name: webhook
+          in: query
+          description: The URL to which the webhook will be sent
+          schema:
+            type: string
+          required: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              description: Any key-value pairs to customize the model generation process
+      responses:
+        '200':
+          $ref: '#/components/responses/predictionResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    description: HTTP status code (e.g., 400 for bad request)
+                  message:
+                    type: string
+                    description: Status message (e.g., "Bad Request")
+                  data:
+                    type: object
+                    properties:
+                      error:
+                        type: string
+                        description: Error message
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    description: HTTP status code (e.g., 401 for unauthorized)
+                  message:
+                    type: string
+                    description: Status message (e.g., "Unauthorized")
+                  data:
+                    type: object
+                    properties:
+                      error:
+                        type: string
+                        description: Error message
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    description: HTTP status code (e.g., 500 for internal server error)
+                  message:
+                    type: string
+                    description: Status message (e.g., "Internal Server Error")
+                  data:
+                    type: object
+                    properties:
+                      error:
+                        type: string
+                        description: Error message
+      security:
+        - bearerAuth: []
+  /predictions/{predictionId}/result:
+    get:
+      summary: Retrieve the result of a prediction
+      operationId: getPredictionData
+      description: |
+        This endpoint retrieves the result of a prediction based on the provided request ID.
+      parameters:
+        - name: predictionId
+          in: path
+          required: true
+          description: The ID of the prediction request
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/predictionResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+      security:
+        - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  responses:
+    predictionResponse:
+      description: Image generation successful
+      content:
+        application/json:
+          schema:
+            title: PredictionResponse
+            type: object
+            required:
+              - code
+              - data
+            properties:
+              code:
+                type: integer
+                description: HTTP status code (e.g., 200 for success)
+              message:
+                type: string
+                description: Status message (e.g., "success")
+              data:
+                title: Prediction
+                type: object
+                properties:
+                  id:
+                    type: string
+                    description: Unique identifier for the prediction
+                  model:
+                    type: string
+                    description: Model ID used for the prediction
+                  outputs:
+                    type: array
+                    items:
+                      type: string
+                      format: uri
+                      description: URLs to the generated content
+                  urls:
+                    type: object
+                    properties:
+                      get:
+                        type: string
+                        format: uri
+                        description: URL to retrieve the prediction result
+                  has_nsfw_contents:
+                    type: array
+                    items:
+                      type: boolean
+                      description: Array of boolean values indicating NSFW detection for each output
+                  status:
+                    type: string
+                    enum: [created, processing, completed, failed]
+                    description: Status of the task
+                  created_at:
+                    type: string
+                    format: date-time
+                    description: Timestamp of when the request was created
+                  error:
+                    type: string
+                    description: Error message (empty if no error occurred)
+                  executionTime:
+                    type: number
+                    description: model execution time
+                  input:
+                    type: object
+                    additionalProperties: true
+                    description: Input parameters for the prediction
+                  timings:
+                    type: object
+                    additionalProperties: true
+                    description: Timing information for the prediction execution
+                required:
+                  - status
+                  - id

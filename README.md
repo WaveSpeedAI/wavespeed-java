@@ -20,12 +20,20 @@
 
 ## Installation
 
+### Maven
+
 ```xml
 <dependency>
   <groupId>org.openapitools</groupId>
   <artifactId>openapi-java-client</artifactId>
   <version>0.1.0-SNAPSHOT</version>
 </dependency>
+```
+
+### Gradle
+
+```groovy
+implementation 'org.openapitools:openapi-java-client:0.1.0-SNAPSHOT'
 ```
 
 ## API Client
@@ -73,15 +81,16 @@ Or pass it directly:
 WaveSpeed client = new WaveSpeed("your-api-key");
 ```
 
+You can get your API key from [https://wavespeed.ai/accesskey](https://wavespeed.ai/accesskey).
+
 ### Options
 
 ```java
-// Custom timeout and polling interval
 Prediction result = client.run(
     "wavespeed-ai/z-image/turbo",
     input,
-    300.0,  // timeout in seconds
-    2.0     // poll interval in seconds
+    300.0,     // timeout in seconds (default: 36000.0)
+    2.0        // poll interval in seconds (default: 1.0)
 );
 ```
 

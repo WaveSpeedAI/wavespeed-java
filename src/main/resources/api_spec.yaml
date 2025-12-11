@@ -2,7 +2,7 @@ openapi: 3.0.0
 info:
   title: WaveSpeed AI API
   description: API for generating images using WaveSpeed AI
-  version: 0.0.1
+  version: 0.1.0-SNAPSHOT
 servers:
   - url: https://api.wavespeed.ai/api/v2
 paths:

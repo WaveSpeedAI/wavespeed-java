@@ -24,8 +24,8 @@
 
 ```xml
 <dependency>
-  <groupId>org.openapitools</groupId>
-  <artifactId>openapi-java-client</artifactId>
+  <groupId>ai.wavespeed</groupId>
+  <artifactId>wavespeed-java-sdk</artifactId>
   <version>0.1.0-SNAPSHOT</version>
 </dependency>
 ```
@@ -33,7 +33,7 @@
 ### Gradle
 
 ```groovy
-implementation 'org.openapitools:openapi-java-client:0.1.0-SNAPSHOT'
+implementation 'ai.wavespeed:wavespeed-java-sdk:0.1.0-SNAPSHOT'
 ```
 
 ## API Client
@@ -90,7 +90,39 @@ Prediction result = client.run(
     "wavespeed-ai/z-image/turbo",
     input,
     300.0,     // timeout in seconds (default: 36000.0)
-    2.0        // poll interval in seconds (default: 1.0)
+    2.0,       // poll interval in seconds (default: 1.0)
+    false      // enable sync mode (default: false)
+);
+```
+
+### Sync Mode
+
+Use `enableSyncMode: true` for a single request that waits for the result (no polling).
+
+> **Note:** Not all models support sync mode. Check the model documentation for availability.
+
+```java
+Prediction result = client.run(
+    "wavespeed-ai/z-image/turbo",
+    input,
+    null,      // use default timeout
+    null,      // use default poll interval
+    true       // enable sync mode
+);
+```
+
+### Retry Configuration
+
+Configure retries when creating the client:
+
+```java
+WaveSpeed client = new WaveSpeed(
+    "your-api-key",
+    null,      // use default poll interval
+    null,      // use default timeout
+    0,         // task-level retries (default: 0)
+    5,         // HTTP connection retries (default: 5)
+    1.0        // base delay between retries in seconds (default: 1.0)
 );
 ```
 

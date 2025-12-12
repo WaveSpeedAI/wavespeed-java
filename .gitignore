@@ -38,6 +38,18 @@ buildNumber.properties
 # OpenAPI generated code
 src/main/java/ai/wavespeed/openapi/
 docs/
+api/
+.openapi-generator/
+git_push.sh
+src/main/AndroidManifest.xml
+
+# Gradle (this project uses Maven, not Gradle)
+.gradle/
+gradle/
+gradlew
+gradlew.bat
+settings.gradle
+build/
 
 # IDE
 .idea/

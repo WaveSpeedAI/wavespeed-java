@@ -30,12 +30,6 @@
 </dependency>
 ```
 
-### Gradle
-
-```groovy
-implementation 'ai.wavespeed:wavespeed-java-sdk:0.1.0-SNAPSHOT'
-```
-
 ## API Client
 
 Run WaveSpeed AI models with a simple API:
@@ -51,14 +45,12 @@ public class Example {
         WaveSpeed client = new WaveSpeed("your-api-key");
 
         try {
-            // Prepare input
             Map<String, Object> input = new HashMap<>();
-            input.put("prompt", "A beautiful sunset over mountains");
+            input.put("prompt", "Cat");
 
-            // Run model and wait for completion
             Prediction result = client.run("wavespeed-ai/z-image/turbo", input);
 
-            System.out.println("Output: " + result.getOutputs());
+            System.out.println(result.getOutputs().get(0));  // Output URL
 
         } catch (Exception e) {
             System.err.println("Error: " + e.getMessage());
@@ -69,7 +61,7 @@ public class Example {
 
 ### Authentication
 
-Set your API key via environment variable:
+Set your API key via environment variable (You can get your API key from [https://wavespeed.ai/accesskey](https://wavespeed.ai/accesskey)):
 
 ```bash
 export WAVESPEED_API_KEY="your-api-key"
@@ -81,17 +73,15 @@ Or pass it directly:
 WaveSpeed client = new WaveSpeed("your-api-key");
 ```
 
-You can get your API key from [https://wavespeed.ai/accesskey](https://wavespeed.ai/accesskey).
-
 ### Options
 
 ```java
 Prediction result = client.run(
     "wavespeed-ai/z-image/turbo",
     input,
-    300.0,     // timeout in seconds (default: 36000.0)
-    2.0,       // poll interval in seconds (default: 1.0)
-    false      // enable sync mode (default: false)
+    300.0,     // Max wait time in seconds (default: 36000.0)
+    2.0,       // Status check interval (default: 1.0)
+    false      // Single request mode, no polling (default: false)
 );
 ```
 
@@ -120,13 +110,13 @@ WaveSpeed client = new WaveSpeed(
     "your-api-key",
     null,      // use default poll interval
     null,      // use default timeout
-    0,         // task-level retries (default: 0)
+    0,         // Task-level retries (default: 0)
     5,         // HTTP connection retries (default: 5)
-    1.0        // base delay between retries in seconds (default: 1.0)
+    1.0        // Base delay between retries in seconds (default: 1.0)
 );
 ```
 
-## Upload Files
+### Upload Files
 
 Upload images, videos, or audio files:
 
@@ -137,35 +127,19 @@ WaveSpeed client = new WaveSpeed("your-api-key");
 
 try {
     String downloadUrl = client.upload("/path/to/image.png");
-    System.out.println("Upload URL: " + downloadUrl);
+    System.out.println(downloadUrl);
 } catch (Exception e) {
     System.err.println("Upload failed: " + e.getMessage());
 }
 ```
 
-## Building & Testing
-
-### Run Tests
-```bash
-mvn test
-```
-
-### Build JAR
-```bash
-mvn clean package
-```
-
-### Install Locally
-```bash
-mvn clean install
-```
-
 ## Environment Variables
+
+### API Client
 
 | Variable | Description |
 |----------|-------------|
 | `WAVESPEED_API_KEY` | WaveSpeed API key |
-| `WAVESPEED_BASE_URL` | API base URL (optional) |
 
 ## License
 

@@ -35,10 +35,10 @@ buildNumber.properties
 .mvn/timing.properties
 .mvn/wrapper/maven-wrapper.jar
 
-# OpenAPI generated code
+# OpenAPI generated code (legacy - now removed)
 src/main/java/ai/wavespeed/openapi/
 docs/
-api/
+/api/
 .openapi-generator/
 git_push.sh
 src/main/AndroidManifest.xml

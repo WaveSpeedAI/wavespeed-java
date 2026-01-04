@@ -130,6 +130,19 @@ String url = Wavespeed.upload("/path/to/image.png");
 System.out.println(url);
 ```
 
+## Running Tests
+
+```bash
+# Run all tests
+mvn test
+
+# Run a single test file
+mvn test -Dtest=ClientTest
+
+# Run a specific test
+mvn test -Dtest=ClientTest#testInitWithApiKey
+```
+
 ## Environment Variables
 
 ### API Client

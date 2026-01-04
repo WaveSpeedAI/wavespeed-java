@@ -113,6 +113,39 @@ public final class Wavespeed {
     }
 
     /**
+     * Run a model with sync mode enabled.
+     *
+     * @param model Model identifier
+     * @param input Input parameters
+     * @param enableSyncMode If true, use synchronous mode (single request)
+     * @return Map containing "outputs" array
+     *
+     * <p>Example:</p>
+     * <pre>{@code
+     * Map<String, Object> output = Wavespeed.run(
+     *     "wavespeed-ai/z-image/turbo",
+     *     Map.of("prompt", "Cat"),
+     *     true
+     * );
+     * }</pre>
+     */
+    public static Map<String, Object> run(String model, Map<String, Object> input, boolean enableSyncMode) {
+        return run(model, input, null, null, enableSyncMode, null);
+    }
+
+    /**
+     * Run a model with custom timeout.
+     *
+     * @param model Model identifier
+     * @param input Input parameters
+     * @param timeout Maximum time to wait for completion
+     * @return Map containing "outputs" array
+     */
+    public static Map<String, Object> run(String model, Map<String, Object> input, double timeout) {
+        return run(model, input, timeout, null, null, null);
+    }
+
+    /**
      * Upload a file to WaveSpeed.
      *
      * @param file File path string to upload

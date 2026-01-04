@@ -98,6 +98,28 @@ public class Client {
     }
 
     /**
+     * Create a client with API key and max retries.
+     *
+     * @param apiKey WaveSpeed API key
+     * @param maxRetries Maximum number of task-level retries
+     */
+    public Client(String apiKey, int maxRetries) {
+        this(apiKey, null, null, maxRetries, null, null);
+    }
+
+    /**
+     * Create a client with API key and retry configuration.
+     *
+     * @param apiKey WaveSpeed API key
+     * @param maxRetries Maximum number of task-level retries
+     * @param maxConnectionRetries Maximum retries for individual HTTP requests
+     * @param retryInterval Base interval between retries in seconds
+     */
+    public Client(String apiKey, int maxRetries, int maxConnectionRetries, double retryInterval) {
+        this(apiKey, null, null, maxRetries, maxConnectionRetries, retryInterval);
+    }
+
+    /**
      * Create a client using configuration from Config.api.
      */
     public Client() {
@@ -462,6 +484,30 @@ public class Client {
      */
     public Map<String, Object> run(String model, Map<String, Object> input) {
         return run(model, input, null, null, null, null);
+    }
+
+    /**
+     * Run a model with sync mode enabled.
+     *
+     * @param model Model identifier
+     * @param input Input parameters
+     * @param enableSyncMode If true, use synchronous mode (single request)
+     * @return Map containing "outputs" array
+     */
+    public Map<String, Object> run(String model, Map<String, Object> input, boolean enableSyncMode) {
+        return run(model, input, null, null, enableSyncMode, null);
+    }
+
+    /**
+     * Run a model with custom timeout.
+     *
+     * @param model Model identifier
+     * @param input Input parameters
+     * @param timeout Maximum time to wait for completion
+     * @return Map containing "outputs" array
+     */
+    public Map<String, Object> run(String model, Map<String, Object> input, double timeout) {
+        return run(model, input, timeout, null, null, null);
     }
 
     /**

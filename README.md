@@ -82,10 +82,10 @@ Map<String, Object> output = client.run(
 Map<String, Object> output = Wavespeed.run(
     "wavespeed-ai/z-image/turbo",
     Map.of("prompt", "Cat"),
-    36000.0,  // Max wait time in seconds (default: 36000.0)
-    1.0,      // Status check interval (default: 1.0)
-    false,    // Single request mode, no polling (default: false)
-    null      // Max retries (default: 0)
+    36000.0,  // timeout - Max wait time in seconds (default: 36000.0)
+    1.0,      // pollInterval - Status check interval (default: 1.0)
+    false,    // enableSyncMode - Single request mode, no polling (default: false)
+    null      // maxRetries - Task-level retries (default: 0)
 );
 ```
 
@@ -99,10 +99,7 @@ Use `enableSyncMode = true` for a single request that waits for the result (no p
 Map<String, Object> output = Wavespeed.run(
     "wavespeed-ai/z-image/turbo",
     Map.of("prompt", "Cat"),
-    null,  // timeout
-    null,  // pollInterval
-    true,  // enableSyncMode
-    null   // maxRetries
+    true  // enableSyncMode
 );
 ```
 
@@ -113,13 +110,12 @@ Configure retries at the client level:
 ```java
 import ai.wavespeed.api.Client;
 
+// Simple retry configuration
 Client client = new Client(
-    "your-api-key",  // API key
-    null,            // baseUrl (default: https://api.wavespeed.ai)
-    null,            // connectionTimeout (default: 10.0)
-    0,               // maxRetries - Task-level retries (default: 0)
-    5,               // maxConnectionRetries - HTTP connection retries (default: 5)
-    1.0              // retryInterval - Base delay between retries in seconds (default: 1.0)
+    "your-api-key",
+    3,    // maxRetries - Task-level retries (default: 0)
+    5,    // maxConnectionRetries - HTTP connection retries (default: 5)
+    1.0   // retryInterval - Base delay between retries in seconds (default: 1.0)
 );
 ```
 

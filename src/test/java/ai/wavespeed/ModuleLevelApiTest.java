@@ -51,7 +51,7 @@ class ModuleLevelApiTest {
         // Test version access
         String version = Wavespeed.version();
         assertNotNull(version);
-        assertEquals("0.1.0", version);
+        assertEquals("0.2.0", version);
     }
 
     @Test

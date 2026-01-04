@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-WaveSpeed Java SDK - Official Java SDK for WaveSpeedAI inference platform. Built with Maven and uses OpenAPI-generated client code.
+WaveSpeed Java SDK - Official Java SDK for WaveSpeedAI inference platform. Provides an API client for running models.
 
 ## Commands
 
@@ -13,11 +13,11 @@ WaveSpeed Java SDK - Official Java SDK for WaveSpeedAI inference platform. Built
 # Run all tests
 mvn test
 
-# Run specific test
-mvn test -Dtest=WaveSpeedTest
+# Run a single test file
+mvn test -Dtest=ClientTest
 
-# Run tests with verbose output
-mvn test -X
+# Run a specific test
+mvn test -Dtest=ClientTest#testInitWithApiKey -X
 ```
 
 ### Building
@@ -30,45 +30,42 @@ mvn clean install
 
 # Build without running tests
 mvn clean package -DskipTests
-```
 
-### Development
-```bash
 # Compile only
 mvn compile
-
-# Clean build artifacts
-mvn clean
-
-# Generate documentation
-mvn javadoc:javadoc
 ```
 
 ## Architecture
 
+### API Client (`src/main/java/ai/wavespeed/`)
+
+Entry point: `Wavespeed.run(model, input)` or `new Client(apiKey)`
+
+Three execution modes:
+1. **Module-level API** - `Wavespeed.run()` for convenience
+2. **Client instance** - `new Client()` for custom configuration
+3. **Static import** - `import static ai.wavespeed.Wavespeed.*` for concise usage
+
+Key classes:
+- `Wavespeed.java` - Module-level API with static methods
+- `api/Client.java` - Main client implementation
+- `Config.java` - Global configuration (Config.api)
+- `Version.java` - SDK version
+
 ### Client Structure
 
-Entry point: `new WaveSpeed(apiKey, pollInterval, timeout, maxRetries, maxConnectionRetries, retryInterval)`
-
-The SDK provides a simple client for running models:
-
 ```java
-WaveSpeed client = new WaveSpeed("your-api-key");
-Prediction result = client.run("model-id", input);
+// Module-level API (uses default client)
+Map<String, Object> output = Wavespeed.run("model", input);
+String url = Wavespeed.upload("/path/to/file");
+
+// Client instance
+Client client = new Client("api-key");
+Map<String, Object> output = client.run("model", input);
+
+// Access global config
+Wavespeed.config().maxRetries = 3;
 ```
-
-### Key Classes
-
-Located in `src/main/java/ai/wavespeed/`:
-
-- `WaveSpeed` - Main client class (extends `DefaultApi`)
-- `Main` - Example usage
-
-OpenAPI-generated code in `src/main/java/ai/wavespeed/openapi/client/`:
-- `ApiClient` - HTTP client wrapper
-- `DefaultApi` - Base API class
-- `model/Prediction` - Prediction model
-- `model/PredictionResponse` - API response wrapper
 
 ### Features
 
@@ -76,58 +73,63 @@ OpenAPI-generated code in `src/main/java/ai/wavespeed/openapi/client/`:
 - **Retry Logic**: Configurable task-level and connection-level retries
 - **Timeout Control**: Per-request and overall timeouts
 - **File Upload**: Direct file upload to WaveSpeed storage
-- **Lombok Integration**: Uses `@Getter` and `@Slf4j` annotations
 
 ### Configuration
 
-Client-level configuration via constructor:
+Global configuration via `Config.api`:
 - `apiKey` - WaveSpeed API key
-- `pollIntervalSeconds` - Polling interval
-- `timeoutSeconds` - Overall timeout
+- `baseUrl` - API base URL (default: https://api.wavespeed.ai)
+- `connectionTimeout` - Connection timeout in seconds (default: 10.0)
+- `timeout` - Total API call timeout in seconds (default: 36000.0)
 - `maxRetries` - Task-level retries (default: 0)
 - `maxConnectionRetries` - HTTP connection retries (default: 5)
 - `retryInterval` - Base retry delay in seconds (default: 1.0)
 
-Per-request configuration:
-- `run(modelId, input, timeout, pollInterval, enableSyncMode)`
+Client-level configuration via constructor:
+```java
+Client client = new Client(
+    apiKey,
+    baseUrl,
+    connectionTimeout,
+    maxRetries,
+    maxConnectionRetries,
+    retryInterval
+);
+```
 
 ### Environment Variables
 
-- `WAVESPEED_API_KEY` - API key (required if not passed to constructor)
+- `WAVESPEED_API_KEY` - API key
 - `WAVESPEED_BASE_URL` - Base URL (default: https://api.wavespeed.ai)
-- `WAVESPEED_POLL_INTERVAL` - Poll interval in seconds
-- `WAVESPEED_TIMEOUT` - Timeout in seconds
+- `WAVESPEED_CONNECTION_TIMEOUT` - Connection timeout (default: 10.0)
+- `WAVESPEED_TIMEOUT` - Total timeout (default: 36000.0)
+- `WAVESPEED_MAX_RETRIES` - Task-level retries (default: 0)
+- `WAVESPEED_MAX_CONNECTION_RETRIES` - HTTP retries (default: 5)
+- `WAVESPEED_RETRY_INTERVAL` - Retry interval (default: 1.0)
 
 ## Project Structure
 
 ```
 src/main/java/ai/wavespeed/
-├── WaveSpeed.java              # Main SDK class
-├── Main.java                   # Example usage
-└── openapi/client/             # OpenAPI-generated code
-    ├── ApiClient.java
-    ├── api/DefaultApi.java
-    └── model/
-        ├── Prediction.java
-        └── PredictionResponse.java
+├── Wavespeed.java          # Module-level API
+├── Version.java            # SDK version
+├── Config.java             # Global configuration
+└── api/
+    ├── Client.java         # Main client implementation
+    └── package-info.java   # Package documentation
 
-pom.xml                         # Maven configuration
+src/test/java/ai/wavespeed/
+└── (test files)
+
+pom.xml                     # Maven configuration
 ```
 
 ## Dependencies
 
 Key dependencies (see `pom.xml`):
-- OkHttp - HTTP client
-- Gson - JSON serialization
-- Lombok - Code generation
-- JUnit - Testing
-
-## Testing
-
-Tests are located in `src/test/java/`:
-- Unit tests for WaveSpeed client
-- Integration tests for API calls
-- Test utilities and fixtures
+- OkHttp 4.12.0 - HTTP client
+- Gson 2.10.1 - JSON serialization
+- JUnit 5 - Testing framework
 
 ## Release Process
 
@@ -135,22 +137,14 @@ This project uses Maven for versioning and GitHub Actions for releases. See VERS
 
 To create a release:
 1. Update version in `pom.xml`
-2. Commit and tag: `git tag v1.0.0`
-3. Push: `git push origin v1.0.0`
+2. Commit and tag: `git tag v0.1.0`
+3. Push: `git push origin v0.1.0`
 4. GitHub Actions will publish to Maven Central
 
 ## Code Style
 
 This project uses:
-- Lombok annotations for boilerplate reduction
-- SLF4J for logging
-- Builder pattern where appropriate
-- Java naming conventions (camelCase for methods, PascalCase for classes)
-
-## Logging
-
-The SDK uses SLF4J with Lombok's `@Slf4j` annotation. Log levels:
-- `DEBUG` - Polling status and detailed operations
-- `INFO` - Retry attempts and important events
-- `WARN` - Warnings and recoverable errors
-- `ERROR` - Errors (not used extensively, exceptions are thrown)
+- Standard Java naming conventions (camelCase for methods, PascalCase for classes)
+- No Lombok (plain Java)
+- System.out for logging (simple approach)
+- Direct field access for Config.api (public fields)

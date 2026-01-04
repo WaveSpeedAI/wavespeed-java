@@ -1,0 +1,81 @@
+name: maven-packages
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v[0-9]+*"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0 # for tags
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: maven
+
+    - name: Build with Maven
+      run: mvn -B clean package --no-transfer-progress --file pom.xml
+
+    - name: Run tests
+      run: mvn -B test --no-transfer-progress --file pom.xml
+      env:
+        WAVESPEED_API_KEY: ${{ secrets.WAVESPEED_API_KEY }}
+
+    - run: ls -lh target/*.jar
+    - uses: actions/upload-artifact@v4
+      with:
+        name: maven-packages
+        path: |
+          target/*.jar
+
+  # publish to GitHub Release
+  gh_release:
+    name: gh_release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions: write-all
+
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - run: ls -R dist/
+
+      # create nightly release if it's a push to main
+      - if: github.repository == 'WaveSpeedAI/wavespeed-java' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        name: Nightly Release
+        uses: andelf/nightly-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: nightly
+          name: 'Nightly Release $$'
+          prerelease: true
+          body: 'TODO: Add nightly release notes'
+          files: |
+            dist/*/*.jar
+
+      # create release if it's a tag like vx.y.z
+      - if: github.repository == 'WaveSpeedAI/wavespeed-java' && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')
+        name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            dist/*/*.jar

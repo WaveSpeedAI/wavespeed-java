@@ -26,8 +26,14 @@
 <dependency>
   <groupId>ai.wavespeed</groupId>
   <artifactId>wavespeed-java-sdk</artifactId>
-  <version>0.1.0-SNAPSHOT</version>
+  <version>0.1.0</version>
 </dependency>
+```
+
+### Gradle
+
+```gradle
+implementation 'ai.wavespeed:wavespeed-java-sdk:0.1.0'
 ```
 
 ## API Client
@@ -35,26 +41,17 @@
 Run WaveSpeed AI models with a simple API:
 
 ```java
-import ai.wavespeed.WaveSpeed;
-import ai.wavespeed.openapi.client.model.Prediction;
-import java.util.HashMap;
+import ai.wavespeed.Wavespeed;
 import java.util.Map;
 
 public class Example {
     public static void main(String[] args) {
-        WaveSpeed client = new WaveSpeed("your-api-key");
+        Map<String, Object> output = Wavespeed.run(
+            "wavespeed-ai/z-image/turbo",
+            Map.of("prompt", "Cat")
+        );
 
-        try {
-            Map<String, Object> input = new HashMap<>();
-            input.put("prompt", "Cat");
-
-            Prediction result = client.run("wavespeed-ai/z-image/turbo", input);
-
-            System.out.println(result.getOutputs().get(0));  // Output URL
-
-        } catch (Exception e) {
-            System.err.println("Error: " + e.getMessage());
-        }
+        System.out.println(output.get("outputs"));  // Output URL
     }
 }
 ```
@@ -70,49 +67,59 @@ export WAVESPEED_API_KEY="your-api-key"
 Or pass it directly:
 
 ```java
-WaveSpeed client = new WaveSpeed("your-api-key");
+import ai.wavespeed.api.Client;
+
+Client client = new Client("your-api-key");
+Map<String, Object> output = client.run(
+    "wavespeed-ai/z-image/turbo",
+    Map.of("prompt", "Cat")
+);
 ```
 
 ### Options
 
 ```java
-Prediction result = client.run(
+Map<String, Object> output = Wavespeed.run(
     "wavespeed-ai/z-image/turbo",
-    input,
-    300.0,     // Max wait time in seconds (default: 36000.0)
-    2.0,       // Status check interval (default: 1.0)
-    false      // Single request mode, no polling (default: false)
+    Map.of("prompt", "Cat"),
+    36000.0,  // Max wait time in seconds (default: 36000.0)
+    1.0,      // Status check interval (default: 1.0)
+    false,    // Single request mode, no polling (default: false)
+    null      // Max retries (default: 0)
 );
 ```
 
 ### Sync Mode
 
-Use `enableSyncMode: true` for a single request that waits for the result (no polling).
+Use `enableSyncMode = true` for a single request that waits for the result (no polling).
 
 > **Note:** Not all models support sync mode. Check the model documentation for availability.
 
 ```java
-Prediction result = client.run(
+Map<String, Object> output = Wavespeed.run(
     "wavespeed-ai/z-image/turbo",
-    input,
-    null,      // use default timeout
-    null,      // use default poll interval
-    true       // enable sync mode
+    Map.of("prompt", "Cat"),
+    null,  // timeout
+    null,  // pollInterval
+    true,  // enableSyncMode
+    null   // maxRetries
 );
 ```
 
 ### Retry Configuration
 
-Configure retries when creating the client:
+Configure retries at the client level:
 
 ```java
-WaveSpeed client = new WaveSpeed(
-    "your-api-key",
-    null,      // use default poll interval
-    null,      // use default timeout
-    0,         // Task-level retries (default: 0)
-    5,         // HTTP connection retries (default: 5)
-    1.0        // Base delay between retries in seconds (default: 1.0)
+import ai.wavespeed.api.Client;
+
+Client client = new Client(
+    "your-api-key",  // API key
+    null,            // baseUrl (default: https://api.wavespeed.ai)
+    null,            // connectionTimeout (default: 10.0)
+    0,               // maxRetries - Task-level retries (default: 0)
+    5,               // maxConnectionRetries - HTTP connection retries (default: 5)
+    1.0              // retryInterval - Base delay between retries in seconds (default: 1.0)
 );
 ```
 
@@ -121,16 +128,10 @@ WaveSpeed client = new WaveSpeed(
 Upload images, videos, or audio files:
 
 ```java
-import ai.wavespeed.WaveSpeed;
+import ai.wavespeed.Wavespeed;
 
-WaveSpeed client = new WaveSpeed("your-api-key");
-
-try {
-    String downloadUrl = client.upload("/path/to/image.png");
-    System.out.println(downloadUrl);
-} catch (Exception e) {
-    System.err.println("Upload failed: " + e.getMessage());
-}
+String url = Wavespeed.upload("/path/to/image.png");
+System.out.println(url);
 ```
 
 ## Environment Variables

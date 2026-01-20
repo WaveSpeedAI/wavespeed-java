@@ -18,6 +18,10 @@
 
 ---
 
+## Introduction
+
+**WaveSpeedAI** Java Client — Official Java SDK for **WaveSpeedAI** inference platform. This library provides a clean, unified, and high-performance API for your Java applications.
+
 ## Installation
 
 ### Maven

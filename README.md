@@ -134,6 +134,24 @@ String url = Wavespeed.upload("/path/to/image.png");
 System.out.println(url);
 ```
 
+### Getting Task ID and Debug Information
+
+If you need access to the task ID for logging, tracking, or debugging, use `runNoThrow()` instead of `run()`. This method returns detailed information and does not throw exceptions:
+
+```java
+import ai.wavespeed.api.Client;
+
+Client.RunNoThrowResult result = client.runNoThrow(model, input);
+
+if (result.getOutputs() != null) {
+    System.out.println("Success: " + result.getOutputs());
+    System.out.println("Task ID: " + result.getDetail().getTaskId());  // For tracking/debugging
+} else {
+    System.out.println("Failed: " + result.getDetail().getError());
+    System.out.println("Task ID: " + result.getDetail().getTaskId());  // Still available on failure
+}
+```
+
 ## Running Tests
 
 ```bash

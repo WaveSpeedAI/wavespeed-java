@@ -606,4 +606,197 @@ public class Client {
             this.syncResult = syncResult;
         }
     }
+
+    /**
+     * Detail information for runNoThrow result.
+     */
+    public static class RunDetail {
+        private final String taskId;
+        private final String status;
+        private final String model;
+        private final String error;
+        private final String createdAt;
+
+        public RunDetail(String taskId, String status, String model, String error, String createdAt) {
+            this.taskId = taskId;
+            this.status = status;
+            this.model = model;
+            this.error = error;
+            this.createdAt = createdAt;
+        }
+
+        public String getTaskId() { return taskId; }
+        public String getStatus() { return status; }
+        public String getModel() { return model; }
+        public String getError() { return error; }
+        public String getCreatedAt() { return createdAt; }
+    }
+
+    /**
+     * Result for runNoThrow method.
+     */
+    public static class RunNoThrowResult {
+        private final Object outputs;
+        private final RunDetail detail;
+
+        public RunNoThrowResult(Object outputs, RunDetail detail) {
+            this.outputs = outputs;
+            this.detail = detail;
+        }
+
+        public Object getOutputs() { return outputs; }
+        public RunDetail getDetail() { return detail; }
+    }
+
+    /**
+     * Run a model and wait for the output (no-throw version).
+     *
+     * <p>This method is similar to run() but does not throw exceptions for task failures.
+     * Instead, it returns a result object with outputs (null on failure) and detail information.
+     * The detail object always contains the taskId, which is useful for debugging and tracking.</p>
+     *
+     * <p>Example usage:</p>
+     * <pre>{@code
+     * RunNoThrowResult result = client.runNoThrow(
+     *     "wavespeed-ai/z-image/turbo",
+     *     Map.of("prompt", "Cat")
+     * );
+     *
+     * if (result.getOutputs() != null) {
+     *     System.out.println("Success: " + result.getOutputs());
+     *     System.out.println("Task ID: " + result.getDetail().getTaskId());
+     * } else {
+     *     System.out.println("Failed: " + result.getDetail().getError());
+     *     System.out.println("Task ID: " + result.getDetail().getTaskId());
+     * }
+     * }</pre>
+     *
+     * @param model Model identifier
+     * @param input Input parameters
+     * @param timeout Maximum time to wait for completion (null = no timeout)
+     * @param pollInterval Interval between status checks in seconds (null = 1.0)
+     * @param enableSyncMode If true, use synchronous mode (null = false)
+     * @param maxRetries Maximum task-level retries (null = use client setting)
+     * @return RunNoThrowResult containing outputs and detail information
+     */
+    public RunNoThrowResult runNoThrow(
+            String model,
+            Map<String, Object> input,
+            Double timeout,
+            Double pollInterval,
+            Boolean enableSyncMode,
+            Integer maxRetries
+    ) {
+        int taskRetries = maxRetries != null ? maxRetries : this.maxRetries;
+        double poll = pollInterval != null ? pollInterval : 1.0;
+        boolean syncMode = enableSyncMode != null && enableSyncMode;
+
+        for (int attempt = 0; attempt <= taskRetries; attempt++) {
+            try {
+                SubmitResult submitResult = submit(model, input, syncMode, timeout);
+
+                if (syncMode) {
+                    // In sync mode, extract outputs from the result
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> data = (Map<String, Object>) submitResult.syncResult.get("data");
+                    String status = (String) data.get("status");
+                    String taskId = (String) data.get("id");
+                    if (taskId == null) taskId = "unknown";
+
+                    if (!"completed".equals(status)) {
+                        String error = (String) data.get("error");
+                        if (error == null) error = "Unknown error";
+                        String createdAt = (String) data.get("created_at");
+                        
+                        return new RunNoThrowResult(
+                            null,
+                            new RunDetail(taskId, "failed", model, error, createdAt)
+                        );
+                    }
+
+                    String createdAt = (String) data.get("created_at");
+                    return new RunNoThrowResult(
+                        data.get("outputs"),
+                        new RunDetail(taskId, "completed", model, null, createdAt)
+                    );
+                }
+
+                // Async mode
+                try {
+                    Map<String, Object> result = wait(submitResult.requestId, timeout, poll);
+                    return new RunNoThrowResult(
+                        result.get("outputs"),
+                        new RunDetail(submitResult.requestId, "completed", model, null, null)
+                    );
+                } catch (Exception waitError) {
+                    // Wait failed, but we have taskID
+                    return new RunNoThrowResult(
+                        null,
+                        new RunDetail(submitResult.requestId, "failed", model, waitError.getMessage(), null)
+                    );
+                }
+
+            } catch (Exception e) {
+                boolean isRetryable = isRetryableError(e);
+
+                if (!isRetryable || attempt >= taskRetries) {
+                    // Try to extract taskID from error message
+                    String taskId = "unknown";
+                    String errorMsg = e.getMessage();
+                    if (errorMsg != null) {
+                        int idx = errorMsg.indexOf("task_id: ");
+                        if (idx != -1) {
+                            int start = idx + 9;
+                            int end = start;
+                            while (end < errorMsg.length() && 
+                                   errorMsg.charAt(end) != ')' && 
+                                   errorMsg.charAt(end) != ' ' && 
+                                   errorMsg.charAt(end) != '\n') {
+                                end++;
+                            }
+                            if (end > start) {
+                                taskId = errorMsg.substring(start, end);
+                            }
+                        }
+                    }
+
+                    return new RunNoThrowResult(
+                        null,
+                        new RunDetail(taskId, "failed", model, errorMsg, null)
+                    );
+                }
+
+                System.out.println("Task attempt " + (attempt + 1) + "/" + (taskRetries + 1) + " failed: " + e);
+                double delay = retryInterval * (attempt + 1);
+                System.out.println("Retrying in " + delay + " seconds...");
+                try {
+                    Thread.sleep((long) (delay * 1000));
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    return new RunNoThrowResult(
+                        null,
+                        new RunDetail("unknown", "failed", model, "Interrupted during retry", null)
+                    );
+                }
+            }
+        }
+
+        // Should not reach here
+        return new RunNoThrowResult(
+            null,
+            new RunDetail("unknown", "failed", model, "All " + (taskRetries + 1) + " attempts failed", null)
+        );
+    }
+
+    /**
+     * Run a model with default options (no-throw version).
+     *
+     * @param model Model identifier
+     * @param input Input parameters
+     * @return RunNoThrowResult containing outputs and detail information
+     */
+    public RunNoThrowResult runNoThrow(String model, Map<String, Object> input) {
+        return runNoThrow(model, input, null, null, null, null);
+    }
 }
+

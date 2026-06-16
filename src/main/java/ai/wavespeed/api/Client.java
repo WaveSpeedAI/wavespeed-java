@@ -149,7 +149,7 @@ public class Client {
      *
      * @param model Model identifier
      * @param input Input parameters
-     * @param enableSyncMode If true, wait for result in single request
+     * @param enableSyncMode If true, wait for result in a best-effort single request
      * @param timeout Request timeout in seconds
      * @return Tuple of (request_id, result). In async mode, result is null. In sync mode, request_id is null.
      * @throws RuntimeException if submission fails after retries
@@ -390,6 +390,56 @@ public class Client {
         return false;
     }
 
+    private String getResultUrl(Map<String, Object> data) {
+        Object urlsObj = data.get("urls");
+        if (!(urlsObj instanceof Map)) {
+            return null;
+        }
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> urls = (Map<String, Object>) urlsObj;
+        Object resultUrl = urls.get("get");
+        return resultUrl instanceof String ? (String) resultUrl : null;
+    }
+
+    private int getResultCode(Map<String, Object> data) {
+        Object code = data.get("code");
+        if (code instanceof Number) {
+            return ((Number) code).intValue();
+        }
+        return 0;
+    }
+
+    private boolean isSyncTimeoutData(Map<String, Object> data) {
+        String status = (String) data.get("status");
+        String error = (String) data.get("error");
+        return getResultCode(data) == 5004 ||
+                ("processing".equals(status) && error != null && error.contains("Sync mode timed out"));
+    }
+
+    private String syncModeErrorMessage(Map<String, Object> data) {
+        String error = (String) data.get("error");
+        if (error == null) {
+            error = "Unknown error";
+        }
+
+        String requestId = (String) data.get("id");
+        if (requestId == null) {
+            requestId = "unknown";
+        }
+
+        if (isSyncTimeoutData(data)) {
+            String message = "Sync mode timed out (task_id: " + requestId + "): " + error;
+            String resultUrl = getResultUrl(data);
+            if (resultUrl != null && !message.contains(resultUrl)) {
+                message += " Query the result later at: " + resultUrl;
+            }
+            return message;
+        }
+
+        return "Prediction failed (task_id: " + requestId + "): " + error;
+    }
+
     /**
      * Run a model and wait for the output.
      *
@@ -397,7 +447,7 @@ public class Client {
      * @param input Input parameters for the model
      * @param timeout Maximum time to wait for completion (null = no timeout)
      * @param pollInterval Interval between status checks in seconds (null = 1.0)
-     * @param enableSyncMode If true, use synchronous mode (single request) (null = false)
+     * @param enableSyncMode If true, use synchronous mode (best-effort single request) (null = false)
      * @param maxRetries Maximum task-level retries (null = use client setting)
      * @return Map containing "outputs" array with model outputs
      * @throws IllegalArgumentException if API key is not configured
@@ -428,17 +478,7 @@ public class Client {
                     String status = (String) data.get("status");
 
                     if (!"completed".equals(status)) {
-                        String error = (String) data.get("error");
-                        if (error == null) {
-                            error = "Unknown error";
-                        }
-                        String requestId = (String) data.get("id");
-                        if (requestId == null) {
-                            requestId = "unknown";
-                        }
-                        throw new RuntimeException(
-                                "Prediction failed (task_id: " + requestId + "): " + error
-                        );
+                        throw new RuntimeException(syncModeErrorMessage(data));
                     }
 
                     Map<String, Object> output = new HashMap<>();
@@ -491,7 +531,7 @@ public class Client {
      *
      * @param model Model identifier
      * @param input Input parameters
-     * @param enableSyncMode If true, use synchronous mode (single request)
+     * @param enableSyncMode If true, use synchronous mode (best-effort single request)
      * @return Map containing "outputs" array
      */
     public Map<String, Object> run(String model, Map<String, Object> input, boolean enableSyncMode) {
@@ -616,13 +656,19 @@ public class Client {
         private final String model;
         private final String error;
         private final String createdAt;
+        private final String resultUrl;
 
         public RunDetail(String taskId, String status, String model, String error, String createdAt) {
+            this(taskId, status, model, error, createdAt, null);
+        }
+
+        public RunDetail(String taskId, String status, String model, String error, String createdAt, String resultUrl) {
             this.taskId = taskId;
             this.status = status;
             this.model = model;
             this.error = error;
             this.createdAt = createdAt;
+            this.resultUrl = resultUrl;
         }
 
         public String getTaskId() { return taskId; }
@@ -630,6 +676,7 @@ public class Client {
         public String getModel() { return model; }
         public String getError() { return error; }
         public String getCreatedAt() { return createdAt; }
+        public String getResultUrl() { return resultUrl; }
     }
 
     /**
@@ -675,7 +722,7 @@ public class Client {
      * @param input Input parameters
      * @param timeout Maximum time to wait for completion (null = no timeout)
      * @param pollInterval Interval between status checks in seconds (null = 1.0)
-     * @param enableSyncMode If true, use synchronous mode (null = false)
+     * @param enableSyncMode If true, use synchronous mode (best-effort single request) (null = false)
      * @param maxRetries Maximum task-level retries (null = use client setting)
      * @return RunNoThrowResult containing outputs and detail information
      */
@@ -707,10 +754,16 @@ public class Client {
                         String error = (String) data.get("error");
                         if (error == null) error = "Unknown error";
                         String createdAt = (String) data.get("created_at");
+                        String resultUrl = getResultUrl(data);
+                        String detailStatus = "failed";
+                        if (isSyncTimeoutData(data)) {
+                            detailStatus = "processing";
+                            error = syncModeErrorMessage(data);
+                        }
                         
                         return new RunNoThrowResult(
                             null,
-                            new RunDetail(taskId, "failed", model, error, createdAt)
+                            new RunDetail(taskId, detailStatus, model, error, createdAt, resultUrl)
                         );
                     }
 
@@ -799,4 +852,3 @@ public class Client {
         return runNoThrow(model, input, null, null, null, null);
     }
 }
-

@@ -150,6 +150,54 @@ class ClientTest {
         });
     }
 
+    @Test
+    void testRunSyncModeTimeoutQueryableError() {
+        String resultUrl = "https://api.wavespeed.ai/api/v3/predictions/req-timeout/result";
+        String responseJson = "{\"data\": {\"status\": \"processing\", " +
+                "\"id\": \"req-timeout\", " +
+                "\"code\": 5004, " +
+                "\"error\": \"Sync mode timed out after 90 seconds. The prediction is still processing asynchronously.\", " +
+                "\"urls\": {\"get\": \"" + resultUrl + "\"}, " +
+                "\"outputs\": []}}";
+        OkHttpClient mockHttpClient = createMockHttpClient(200, responseJson);
+        Client client = createClientWithMockHttp("test-key", mockHttpClient);
+
+        RuntimeException error = assertThrows(RuntimeException.class, () -> client.run(
+                "wavespeed-ai/z-image/turbo",
+                Map.of("prompt", "test"),
+                null, null, true, 1
+        ));
+
+        assertTrue(error.getMessage().contains("Sync mode timed out"));
+        assertTrue(error.getMessage().contains("req-timeout"));
+        assertTrue(error.getMessage().contains(resultUrl));
+    }
+
+    @Test
+    void testRunNoThrowSyncModeTimeoutReturnsProcessing() {
+        String resultUrl = "https://api.wavespeed.ai/api/v3/predictions/req-timeout/result";
+        String responseJson = "{\"data\": {\"status\": \"processing\", " +
+                "\"id\": \"req-timeout\", " +
+                "\"code\": 5004, " +
+                "\"error\": \"Sync mode timed out after 90 seconds. The prediction is still processing asynchronously.\", " +
+                "\"urls\": {\"get\": \"" + resultUrl + "\"}, " +
+                "\"outputs\": []}}";
+        OkHttpClient mockHttpClient = createMockHttpClient(200, responseJson);
+        Client client = createClientWithMockHttp("test-key", mockHttpClient);
+
+        Client.RunNoThrowResult result = client.runNoThrow(
+                "wavespeed-ai/z-image/turbo",
+                Map.of("prompt", "test"),
+                null, null, true, null
+        );
+
+        assertNull(result.getOutputs());
+        assertEquals("processing", result.getDetail().getStatus());
+        assertEquals("req-timeout", result.getDetail().getTaskId());
+        assertEquals(resultUrl, result.getDetail().getResultUrl());
+        assertTrue(result.getDetail().getError().contains("Sync mode timed out"));
+    }
+
     // Helper methods
 
     private String getBaseUrl(Client client) {

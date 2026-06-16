@@ -88,14 +88,16 @@ Map<String, Object> output = Wavespeed.run(
     Map.of("prompt", "Cat"),
     36000.0,  // timeout - Max wait time in seconds (default: 36000.0)
     1.0,      // pollInterval - Status check interval (default: 1.0)
-    false,    // enableSyncMode - Single request mode, no polling (default: false)
+    false,    // enableSyncMode - Best-effort sync result attempt (default: false)
     null      // maxRetries - Task-level retries (default: 0)
 );
 ```
 
 ### Sync Mode
 
-Use `enableSyncMode = true` for a single request that waits for the result (no polling).
+Use `enableSyncMode = true` to ask the API to wait for the result in the initial
+request. If the server-side sync wait times out, the SDK throws an error with
+the task ID/result URL; the task continues processing and can be queried later.
 
 > **Note:** Not all models support sync mode. Check the model documentation for availability.
 

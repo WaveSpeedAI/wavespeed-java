@@ -59,7 +59,7 @@ public final class Wavespeed {
      * @param input Input parameters for the model
      * @param timeout Maximum time to wait for completion (null = no timeout)
      * @param pollInterval Interval between status checks in seconds (null = 1.0)
-     * @param enableSyncMode If true, use synchronous mode (single request) (null = false)
+     * @param enableSyncMode If true, use synchronous mode (best-effort single request) (null = false)
      * @param maxRetries Maximum retries for this request (null = use default setting)
      * @return Map containing "outputs" array with model outputs
      * @throws IllegalArgumentException if API key is not configured
@@ -117,7 +117,7 @@ public final class Wavespeed {
      *
      * @param model Model identifier
      * @param input Input parameters
-     * @param enableSyncMode If true, use synchronous mode (single request)
+     * @param enableSyncMode If true, use synchronous mode (best-effort single request)
      * @return Map containing "outputs" array
      *
      * <p>Example:</p>

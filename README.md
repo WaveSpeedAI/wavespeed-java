@@ -24,21 +24,11 @@
 
 ## Installation
 
-### Maven
+Download `wavespeed-java-sdk-0.2.2.jar` from the
+[v0.2.2 release](https://github.com/WaveSpeedAI/wavespeed-java/releases/tag/v0.2.2)
+and add it to your application's classpath.
 
-```xml
-<dependency>
-  <groupId>ai.wavespeed</groupId>
-  <artifactId>wavespeed-java-sdk</artifactId>
-  <version>0.2.2</version>
-</dependency>
-```
-
-### Gradle
-
-```gradle
-implementation 'ai.wavespeed:wavespeed-java-sdk:0.2.2'
-```
+Maven Central publishing is not enabled yet. The release also provides source and Javadoc JARs.
 
 ## API Client
 

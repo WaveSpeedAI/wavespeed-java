@@ -8,6 +8,7 @@ import okhttp3.*;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -572,20 +573,23 @@ public class Client {
             throw new IllegalArgumentException("File not found: " + file);
         }
 
-        String url = this.baseUrl + "/api/v3/media/upload/binary";
-        RequestBody fileBody = RequestBody.create(
-                fileObj,
-                MediaType.parse("application/octet-stream")
-        );
+        String contentType;
+        try {
+            contentType = Files.probeContentType(fileObj.toPath());
+        } catch (IOException ignored) {
+            contentType = null;
+        }
 
-        MultipartBody requestBody = new MultipartBody.Builder()
-                .setType(MultipartBody.FORM)
-                .addFormDataPart("file", fileObj.getName(), fileBody)
-                .build();
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("filename", fileObj.getName());
+        payload.put("size", fileObj.length());
+        if (contentType != null) {
+            payload.put("content_type", contentType);
+        }
 
         Request request = new Request.Builder()
-                .url(url)
-                .post(requestBody)
+                .url(this.baseUrl + "/api/v3/media/uploads")
+                .post(RequestBody.create(gson.toJson(payload), MediaType.parse("application/json")))
                 .addHeader("Authorization", "Bearer " + apiKey)
                 .build();
 
@@ -593,7 +597,7 @@ public class Client {
             if (response.code() != 200) {
                 String errorBody = response.body() != null ? response.body().string() : "";
                 throw new RuntimeException(
-                        "Failed to upload file: HTTP " + response.code() + ": " + errorBody
+                        "Failed to create upload: HTTP " + response.code() + ": " + errorBody
                 );
             }
 
@@ -613,8 +617,33 @@ public class Client {
             @SuppressWarnings("unchecked")
             Map<String, Object> data = (Map<String, Object>) result.get("data");
             String downloadUrl = (String) data.get("download_url");
-            if (downloadUrl == null) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> upload = (Map<String, Object>) data.get("upload");
+            if (downloadUrl == null || upload == null || upload.get("url") == null) {
                 throw new RuntimeException("Upload failed: no download_url in response");
+            }
+
+            String method = upload.get("method") instanceof String ? (String) upload.get("method") : "PUT";
+            RequestBody fileBody = RequestBody.create(
+                    fileObj,
+                    MediaType.parse(contentType != null ? contentType : "application/octet-stream")
+            );
+            Request.Builder uploadRequest = new Request.Builder()
+                    .url((String) upload.get("url"))
+                    .method(method, fileBody);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> uploadHeaders = (Map<String, Object>) upload.get("headers");
+            if (uploadHeaders != null) {
+                uploadHeaders.forEach((key, value) -> uploadRequest.addHeader(key, String.valueOf(value)));
+            }
+
+            try (Response uploadResponse = httpClient.newCall(uploadRequest.build()).execute()) {
+                if (!uploadResponse.isSuccessful()) {
+                    String errorBody = uploadResponse.body() != null ? uploadResponse.body().string() : "";
+                    throw new RuntimeException(
+                            "Failed to upload file: HTTP " + uploadResponse.code() + ": " + errorBody
+                    );
+                }
             }
 
             return downloadUrl;

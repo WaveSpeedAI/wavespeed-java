@@ -1,6 +1,7 @@
 package ai.wavespeed.api;
 
 import ai.wavespeed.Config;
+import ai.wavespeed.Version;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import okhttp3.*;
@@ -54,6 +55,12 @@ public class Client {
     private final int maxRetries;
     private final int maxConnectionRetries;
     private final double retryInterval;
+    private String clientName;
+
+    /**
+     * Default value for the X-Client-Name channel-attribution header.
+     */
+    private static final String DEFAULT_CLIENT_NAME = "wavespeed-java";
 
     /**
      * Initialize the client.
@@ -128,6 +135,71 @@ public class Client {
     }
 
     /**
+     * Set the client name reported in the X-Client-Name header for channel attribution.
+     *
+     * <p>The WAVESPEED_CLIENT_NAME environment variable takes precedence over this value.</p>
+     *
+     * @param clientName Client name to report
+     * @return This client, for chaining
+     */
+    public Client setClientName(String clientName) {
+        this.clientName = clientName;
+        return this;
+    }
+
+    /**
+     * Resolve the value for the X-Client-Name header.
+     *
+     * <p>Precedence: WAVESPEED_CLIENT_NAME environment variable &gt; setClientName() &gt; default.</p>
+     *
+     * @return Client name for channel attribution
+     */
+    private String resolveClientName() {
+        String envName = System.getenv("WAVESPEED_CLIENT_NAME");
+        if (envName != null && !envName.isEmpty()) {
+            return envName;
+        }
+        if (clientName != null && !clientName.isEmpty()) {
+            return clientName;
+        }
+        return DEFAULT_CLIENT_NAME;
+    }
+
+    /**
+     * Get the operating system name for the X-Client-OS header
+     * (lowercase: darwin/linux/windows).
+     *
+     * @return Normalized operating system name
+     */
+    private static String clientOs() {
+        String osName = System.getProperty("os.name", "").toLowerCase();
+        if (osName.contains("mac") || osName.contains("darwin")) {
+            return "darwin";
+        }
+        if (osName.contains("win")) {
+            return "windows";
+        }
+        if (osName.contains("nux") || osName.contains("nix")) {
+            return "linux";
+        }
+        return osName;
+    }
+
+    /**
+     * Add the channel-attribution headers (X-Client-Name, X-Client-Version,
+     * X-Client-OS) sent on every API request.
+     *
+     * @param builder Request builder to add headers to
+     * @return The same builder, for chaining
+     */
+    private Request.Builder addClientHeaders(Request.Builder builder) {
+        return builder
+                .addHeader("X-Client-Name", resolveClientName())
+                .addHeader("X-Client-Version", Version.VERSION)
+                .addHeader("X-Client-OS", clientOs());
+    }
+
+    /**
      * Get request headers with authentication.
      *
      * @return Headers map
@@ -142,6 +214,9 @@ public class Client {
         Map<String, String> headers = new HashMap<>();
         headers.put("Content-Type", "application/json");
         headers.put("Authorization", "Bearer " + apiKey);
+        headers.put("X-Client-Name", resolveClientName());
+        headers.put("X-Client-Version", Version.VERSION);
+        headers.put("X-Client-OS", clientOs());
         return headers;
     }
 
@@ -179,14 +254,14 @@ public class Client {
 
         for (int retry = 0; retry <= maxConnectionRetries; retry++) {
             try {
-                Request request = new Request.Builder()
+                Request request = addClientHeaders(new Request.Builder()
                         .url(url)
                         .post(RequestBody.create(
                                 gson.toJson(body),
                                 MediaType.parse("application/json")
                         ))
                         .addHeader("Authorization", "Bearer " + apiKey)
-                        .addHeader("Content-Type", "application/json")
+                        .addHeader("Content-Type", "application/json"))
                         .build();
 
                 try (Response response = httpClient.newCall(request).execute()) {
@@ -260,10 +335,10 @@ public class Client {
 
         for (int retry = 0; retry <= maxConnectionRetries; retry++) {
             try {
-                Request request = new Request.Builder()
+                Request request = addClientHeaders(new Request.Builder()
                         .url(url)
                         .get()
-                        .addHeader("Authorization", "Bearer " + apiKey)
+                        .addHeader("Authorization", "Bearer " + apiKey))
                         .build();
 
                 try (Response response = httpClient.newCall(request).execute()) {
@@ -587,10 +662,10 @@ public class Client {
             payload.put("content_type", contentType);
         }
 
-        Request request = new Request.Builder()
+        Request request = addClientHeaders(new Request.Builder()
                 .url(this.baseUrl + "/api/v3/media/uploads")
                 .post(RequestBody.create(gson.toJson(payload), MediaType.parse("application/json")))
-                .addHeader("Authorization", "Bearer " + apiKey)
+                .addHeader("Authorization", "Bearer " + apiKey))
                 .build();
 
         try (Response response = httpClient.newCall(request).execute()) {

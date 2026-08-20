@@ -5,7 +5,7 @@
     <artifactId>wavespeed-java-sdk</artifactId>
     <packaging>jar</packaging>
     <name>wavespeed-java-sdk</name>
-    <version>0.2.2</version>
+    <version>0.2.3</version>
     <url>https://github.com/WaveSpeedAI/wavespeed-java</url>
     <description>WaveSpeedAI Java SDK - Official Java SDK for WaveSpeedAI inference platform</description>
     <scm>

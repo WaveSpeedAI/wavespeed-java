@@ -3,6 +3,9 @@ package ai.wavespeed;
 import ai.wavespeed.api.Client;
 import com.google.gson.Gson;
 import okhttp3.*;
+import okhttp3.mockwebserver.MockResponse;
+import okhttp3.mockwebserver.MockWebServer;
+import okhttp3.mockwebserver.RecordedRequest;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -196,6 +199,52 @@ class ClientTest {
         assertEquals("req-timeout", result.getDetail().getTaskId());
         assertEquals(resultUrl, result.getDetail().getResultUrl());
         assertTrue(result.getDetail().getError().contains("Sync mode timed out"));
+    }
+
+    @Test
+    void testAttributionHeadersSentOnSubmit() throws Exception {
+        try (MockWebServer server = new MockWebServer()) {
+            server.start();
+            server.enqueue(new MockResponse()
+                    .setResponseCode(200)
+                    .setBody("{\"data\": {\"status\": \"completed\", " +
+                            "\"id\": \"req-123\", \"outputs\": []}}"));
+
+            Client client = new Client("test-key", server.url("/").toString(), null, null, null, null);
+            client.run("wavespeed-ai/z-image/turbo", Map.of("prompt", "test"), null, null, true, null);
+
+            RecordedRequest recorded = server.takeRequest(1, java.util.concurrent.TimeUnit.SECONDS);
+            assertNotNull(recorded);
+            if (System.getenv("WAVESPEED_CLIENT_NAME") == null) {
+                assertEquals("wavespeed-java", recorded.getHeader("X-Client-Name"));
+            }
+            assertEquals(Version.VERSION, recorded.getHeader("X-Client-Version"));
+            String os = recorded.getHeader("X-Client-OS");
+            assertNotNull(os);
+            assertEquals(os.toLowerCase(), os);
+            assertTrue(List.of("darwin", "linux", "windows").contains(os));
+        }
+    }
+
+    @Test
+    void testAttributionHeadersWithCustomClientName() throws Exception {
+        try (MockWebServer server = new MockWebServer()) {
+            server.start();
+            server.enqueue(new MockResponse()
+                    .setResponseCode(200)
+                    .setBody("{\"data\": {\"status\": \"completed\", " +
+                            "\"id\": \"req-123\", \"outputs\": []}}"));
+
+            Client client = new Client("test-key", server.url("/").toString(), null, null, null, null)
+                    .setClientName("my-app");
+            client.run("wavespeed-ai/z-image/turbo", Map.of("prompt", "test"), null, null, true, null);
+
+            RecordedRequest recorded = server.takeRequest(1, java.util.concurrent.TimeUnit.SECONDS);
+            assertNotNull(recorded);
+            if (System.getenv("WAVESPEED_CLIENT_NAME") == null) {
+                assertEquals("my-app", recorded.getHeader("X-Client-Name"));
+            }
+        }
     }
 
     // Helper methods

@@ -24,11 +24,14 @@
 
 ## Installation
 
-Download `wavespeed-java-sdk-0.2.2.jar` from the
-[v0.2.2 release](https://github.com/WaveSpeedAI/wavespeed-java/releases/tag/v0.2.2)
-and add it to your application's classpath.
+Download `wavespeed-java-sdk-0.2.4.jar` from the
+[v0.2.4 release](https://github.com/WaveSpeedAI/wavespeed-java/releases/tag/v0.2.4)
+and add it to your application's classpath (coordinates: `ai.wavespeed:wavespeed-java-sdk:0.2.4`).
 
-Maven Central publishing is not enabled yet. The release also provides source and Javadoc JARs.
+The SDK is not published to Maven Central (or any other registry) yet: the
+release workflow currently only builds the JARs, so GitHub release assets are
+the official distribution channel. The release also provides source and
+Javadoc JARs.
 
 ## API Client
 
@@ -101,7 +104,11 @@ Map<String, Object> output = Wavespeed.run(
 
 ### Retry Configuration
 
-Configure retries at the client level:
+Configure retries at the client level. Retries only apply to idempotent
+result-query GET requests; the submission POST is sent exactly once and is
+never retried, because a failed submission may still have created the task
+on the server. When that happens the SDK throws
+`ai.wavespeed.WavespeedSubmissionException`.
 
 ```java
 import ai.wavespeed.api.Client;
@@ -110,7 +117,7 @@ import ai.wavespeed.api.Client;
 Client client = new Client(
     "your-api-key",
     3,    // maxRetries - Task-level retries (default: 0)
-    5,    // maxConnectionRetries - HTTP connection retries (default: 5)
+    5,    // maxConnectionRetries - Result-query GET retries; the submission POST is never retried (default: 5)
     1.0   // retryInterval - Base delay between retries in seconds (default: 1.0)
 );
 ```
@@ -164,6 +171,7 @@ mvn test -Dtest=ClientTest#testInitWithApiKey
 | Variable | Description |
 |----------|-------------|
 | `WAVESPEED_API_KEY` | WaveSpeed API key |
+| `WAVESPEED_CLIENT_NAME` | Channel-attribution name sent as the `X-Client-Name` header. Takes precedence over `Client.setClientName()`; defaults to `wavespeed-java` |
 
 ## License
 

@@ -13,9 +13,13 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
+
+import okhttp3.mockwebserver.SocketPolicy;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.*;
 
 /**
@@ -247,6 +251,83 @@ class ClientTest {
         }
     }
 
+    @Test
+    void testSubmissionPostIsNeverRetriedOnIOException() throws Exception {
+        try (MockWebServer server = new MockWebServer()) {
+            server.start();
+            // First (and only expected) request dies mid-flight -> IOException.
+            server.enqueue(new MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AT_START));
+            // If the SDK wrongly retried, this queued success would be consumed.
+            server.enqueue(new MockResponse()
+                    .setResponseCode(200)
+                    .setBody("{\"data\": {\"id\": \"req-retried\"}}"));
+
+            // Generous connection/task retry budget: none of it may apply to the POST.
+            Client client = new Client("test-key", server.url("/").toString(), null, 3, 5, 0.01);
+
+            WavespeedSubmissionException error = assertThrows(
+                    WavespeedSubmissionException.class,
+                    () -> client.run("wavespeed-ai/z-image/turbo", Map.of("prompt", "test"))
+            );
+            assertTrue(error.getMessage().contains("may already"));
+            assertTrue(error.getMessage().contains("will not retry the POST"));
+            assertEquals(1, server.getRequestCount());
+        }
+    }
+
+    @Test
+    void testPerCallTimeoutIsApplied() throws Exception {
+        try (MockWebServer server = new MockWebServer()) {
+            server.start();
+            // Server accepts the connection but never responds.
+            server.enqueue(new MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE));
+
+            Client client = new Client("test-key", server.url("/").toString(), null, 0, 0, 0.01);
+
+            long start = System.currentTimeMillis();
+            WavespeedSubmissionException error = assertThrows(
+                    WavespeedSubmissionException.class,
+                    () -> client.run("wavespeed-ai/z-image/turbo", Map.of("prompt", "test"),
+                            1.0, null, true, null)  // timeout = 1s
+            );
+            long elapsedMs = System.currentTimeMillis() - start;
+
+            // Shared-client read timeout is Config.api.timeout (36000s); only a
+            // per-call timeout can fail this fast.
+            assertTrue(elapsedMs < 10000,
+                    "per-call timeout not applied; call took " + elapsedMs + "ms");
+            assertNotNull(error.getCause());
+            assertEquals(1, server.getRequestCount());
+        }
+    }
+
+    @Test
+    void testCancelledStatusTerminatesWait() throws Exception {
+        try (MockWebServer server = new MockWebServer()) {
+            server.start();
+            server.enqueue(new MockResponse()
+                    .setResponseCode(200)
+                    .setBody("{\"data\": {\"id\": \"req-cancel\"}}"));
+            server.enqueue(new MockResponse()
+                    .setResponseCode(200)
+                    .setBody("{\"data\": {\"status\": \"cancelled\", " +
+                            "\"id\": \"req-cancel\", " +
+                            "\"error\": \"Task was cancelled by user\"}}"));
+
+            Client client = new Client("test-key", server.url("/").toString(), null, 0, 0, 0.01);
+
+            RuntimeException error = assertThrows(RuntimeException.class, () ->
+                    client.run("wavespeed-ai/z-image/turbo", Map.of("prompt", "test"),
+                            30.0, 0.05, null, null));
+
+            assertTrue(error.getMessage().contains("cancelled"));
+            assertTrue(error.getMessage().contains("req-cancel"));
+            assertTrue(error.getMessage().contains("Task was cancelled by user"));
+            // Submission + one poll: the cancelled status must stop the wait loop.
+            assertEquals(2, server.getRequestCount());
+        }
+    }
+
     // Helper methods
 
     private String getBaseUrl(Client client) {
@@ -279,6 +360,15 @@ class ClientTest {
 
             when(mockClient.newCall(any(Request.class))).thenReturn(mockCall);
             when(mockCall.execute()).thenReturn(mockResponse);
+
+            // Per-call timeout clients are derived via newBuilder(); route them
+            // back to the same mock so stubbed calls are still used.
+            OkHttpClient.Builder mockBuilder = mock(OkHttpClient.Builder.class);
+            when(mockClient.newBuilder()).thenReturn(mockBuilder);
+            when(mockBuilder.connectTimeout(anyLong(), any(TimeUnit.class))).thenReturn(mockBuilder);
+            when(mockBuilder.readTimeout(anyLong(), any(TimeUnit.class))).thenReturn(mockBuilder);
+            when(mockBuilder.callTimeout(anyLong(), any(TimeUnit.class))).thenReturn(mockBuilder);
+            when(mockBuilder.build()).thenReturn(mockClient);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

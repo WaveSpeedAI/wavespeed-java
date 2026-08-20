@@ -55,7 +55,7 @@ public final class Wavespeed {
     /**
      * Run a model and wait for the output.
      *
-     * @param model Model identifier (e.g., "wavespeed-ai/flux-dev")
+     * @param model Model identifier (e.g., "wavespeed-ai/z-image/turbo")
      * @param input Input parameters for the model
      * @param timeout Maximum time to wait for completion (null = no timeout)
      * @param pollInterval Interval between status checks in seconds (null = 1.0)
@@ -73,7 +73,7 @@ public final class Wavespeed {
      *     Map.of("prompt", "A cat sitting on a windowsill"),
      *     null, null, null, null
      * );
-     * System.out.println(output.get("outputs"));  // First output URL
+     * System.out.println(output.get("outputs"));  // List of output URLs
      *
      * // With sync mode
      * output = Wavespeed.run(

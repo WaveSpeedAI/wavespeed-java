@@ -2,6 +2,7 @@ package ai.wavespeed.api;
 
 import ai.wavespeed.Config;
 import ai.wavespeed.Version;
+import ai.wavespeed.WavespeedSubmissionException;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import okhttp3.*;
@@ -228,7 +229,9 @@ public class Client {
      * @param enableSyncMode If true, wait for result in a best-effort single request
      * @param timeout Request timeout in seconds
      * @return Tuple of (request_id, result). In async mode, result is null. In sync mode, request_id is null.
-     * @throws RuntimeException if submission fails after retries
+     * @throws WavespeedSubmissionException if submission fails. The POST is sent
+     *         exactly once and is never retried automatically: the task may or
+     *         may not have been created on the server.
      */
     private SubmitResult submit(
             String model,
@@ -252,73 +255,73 @@ public class Client {
                 requestTimeout
         );
 
-        for (int retry = 0; retry <= maxConnectionRetries; retry++) {
-            try {
-                Request request = addClientHeaders(new Request.Builder()
-                        .url(url)
-                        .post(RequestBody.create(
-                                gson.toJson(body),
-                                MediaType.parse("application/json")
-                        ))
-                        .addHeader("Authorization", "Bearer " + apiKey)
-                        .addHeader("Content-Type", "application/json"))
-                        .build();
+        // Per-call timeouts: connect uses the smaller of the client connect
+        // timeout and the request timeout; read/call enforce the request timeout.
+        OkHttpClient callClient = perCallClient(connectTimeout, requestTimeout);
 
-                try (Response response = httpClient.newCall(request).execute()) {
-                    if (response.code() != 200) {
-                        String errorBody = response.body() != null ? response.body().string() : "";
-                        throw new RuntimeException(
-                                "Failed to submit prediction: HTTP " + response.code() + ": " + errorBody
-                        );
-                    }
+        Request request = addClientHeaders(new Request.Builder()
+                .url(url)
+                .post(RequestBody.create(
+                        gson.toJson(body),
+                        MediaType.parse("application/json")
+                ))
+                .addHeader("Authorization", "Bearer " + apiKey)
+                .addHeader("Content-Type", "application/json"))
+                .build();
 
-                    String responseBody = response.body().string();
-                    Map<String, Object> result = gson.fromJson(
-                            responseBody,
-                            new TypeToken<Map<String, Object>>() {}.getType()
-                    );
-
-                    if (enableSyncMode) {
-                        return new SubmitResult(null, result);
-                    }
-
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> data = (Map<String, Object>) result.get("data");
-                    String requestId = (String) data.get("id");
-
-                    if (requestId == null) {
-                        throw new RuntimeException("No request ID in response: " + result);
-                    }
-
-                    return new SubmitResult(requestId, null);
-                }
-
-            } catch (IOException e) {
-                System.out.println("Connection error on attempt " + (retry + 1) + "/" + (maxConnectionRetries + 1) + ":");
-                e.printStackTrace();
-
-                if (retry < maxConnectionRetries) {
-                    double delay = retryInterval * (retry + 1);
-                    System.out.println("Retrying in " + delay + " seconds...");
-                    try {
-                        Thread.sleep((long) (delay * 1000));
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                        throw new RuntimeException(
-                                "Failed to submit prediction after " + (maxConnectionRetries + 1) + " attempts",
-                                e
-                        );
-                    }
-                } else {
-                    throw new RuntimeException(
-                            "Failed to submit prediction after " + (maxConnectionRetries + 1) + " attempts",
-                            e
-                    );
-                }
+        // The submission POST is sent exactly once. If it fails, the server may
+        // already have created the task, so retrying could duplicate work.
+        try (Response response = callClient.newCall(request).execute()) {
+            if (response.code() != 200) {
+                String errorBody = response.body() != null ? response.body().string() : "";
+                throw new WavespeedSubmissionException(
+                        "Failed to submit prediction: HTTP " + response.code() + ": " + errorBody
+                );
             }
-        }
 
-        throw new RuntimeException("Unexpected error in submit");
+            String responseBody = response.body().string();
+            Map<String, Object> result = gson.fromJson(
+                    responseBody,
+                    new TypeToken<Map<String, Object>>() {}.getType()
+            );
+
+            if (enableSyncMode) {
+                return new SubmitResult(null, result);
+            }
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> data = (Map<String, Object>) result.get("data");
+            String requestId = (String) data.get("id");
+
+            if (requestId == null) {
+                throw new WavespeedSubmissionException("No request ID in response: " + result);
+            }
+
+            return new SubmitResult(requestId, null);
+
+        } catch (IOException e) {
+            throw new WavespeedSubmissionException(
+                    "Prediction submission did not return a response. The task may already " +
+                            "have been created, so the SDK will not retry the POST automatically.",
+                    e
+            );
+        }
+    }
+
+    /**
+     * Build a per-call HTTP client that shares the connection pool of the
+     * base client but enforces the given timeouts for this call only.
+     *
+     * @param connectTimeout Connect timeout in seconds
+     * @param requestTimeout Read and overall call timeout in seconds
+     * @return HTTP client with the per-call timeouts applied
+     */
+    private OkHttpClient perCallClient(double connectTimeout, double requestTimeout) {
+        return httpClient.newBuilder()
+                .connectTimeout((long) (connectTimeout * 1000), TimeUnit.MILLISECONDS)
+                .readTimeout((long) (requestTimeout * 1000), TimeUnit.MILLISECONDS)
+                .callTimeout((long) (requestTimeout * 1000), TimeUnit.MILLISECONDS)
+                .build();
     }
 
     /**
@@ -332,6 +335,11 @@ public class Client {
     private Map<String, Object> getResult(String requestId, Double timeout) {
         String url = this.baseUrl + "/api/v3/predictions/" + requestId + "/result";
         double requestTimeout = timeout != null ? timeout : Config.api.timeout;
+        double connectTimeout = Math.min(
+                this.httpClient.connectTimeoutMillis() / 1000.0,
+                requestTimeout
+        );
+        OkHttpClient callClient = perCallClient(connectTimeout, requestTimeout);
 
         for (int retry = 0; retry <= maxConnectionRetries; retry++) {
             try {
@@ -341,7 +349,7 @@ public class Client {
                         .addHeader("Authorization", "Bearer " + apiKey))
                         .build();
 
-                try (Response response = httpClient.newCall(request).execute()) {
+                try (Response response = callClient.newCall(request).execute()) {
                     if (response.code() != 200) {
                         String errorBody = response.body() != null ? response.body().string() : "";
                         throw new RuntimeException(
@@ -426,10 +434,10 @@ public class Client {
                 return output;
             }
 
-            if ("failed".equals(status)) {
+            if ("failed".equals(status) || "cancelled".equals(status) || "timeout".equals(status)) {
                 String error = (String) data.get("error");
                 throw new RuntimeException(
-                        "Prediction failed (task_id: " + requestId + "): " +
+                        "Prediction " + status + " (task_id: " + requestId + "): " +
                                 (error != null ? error : "Unknown error")
                 );
             }
@@ -450,7 +458,13 @@ public class Client {
      * @return True if the error is retryable
      */
     private boolean isRetryableError(Exception error) {
-        // Always retry timeout and connection errors
+        // Submission errors are ambiguous: the server may already have created
+        // the task, so never turn them into another POST automatically.
+        if (error instanceof WavespeedSubmissionException) {
+            return false;
+        }
+
+        // Retry timeout and connection errors from result-query GETs
         if (error instanceof IOException) {
             return true;
         }
@@ -519,7 +533,7 @@ public class Client {
     /**
      * Run a model and wait for the output.
      *
-     * @param model Model identifier (e.g., "wavespeed-ai/flux-dev")
+     * @param model Model identifier (e.g., "wavespeed-ai/z-image/turbo")
      * @param input Input parameters for the model
      * @param timeout Maximum time to wait for completion (null = no timeout)
      * @param pollInterval Interval between status checks in seconds (null = 1.0)
@@ -662,13 +676,20 @@ public class Client {
             payload.put("content_type", contentType);
         }
 
+        double requestTimeout = timeout != null ? timeout : Config.api.timeout;
+        double connectTimeout = Math.min(
+                this.httpClient.connectTimeoutMillis() / 1000.0,
+                requestTimeout
+        );
+        OkHttpClient callClient = perCallClient(connectTimeout, requestTimeout);
+
         Request request = addClientHeaders(new Request.Builder()
                 .url(this.baseUrl + "/api/v3/media/uploads")
                 .post(RequestBody.create(gson.toJson(payload), MediaType.parse("application/json")))
                 .addHeader("Authorization", "Bearer " + apiKey))
                 .build();
 
-        try (Response response = httpClient.newCall(request).execute()) {
+        try (Response response = callClient.newCall(request).execute()) {
             if (response.code() != 200) {
                 String errorBody = response.body() != null ? response.body().string() : "";
                 throw new RuntimeException(
@@ -712,7 +733,7 @@ public class Client {
                 uploadHeaders.forEach((key, value) -> uploadRequest.addHeader(key, String.valueOf(value)));
             }
 
-            try (Response uploadResponse = httpClient.newCall(uploadRequest.build()).execute()) {
+            try (Response uploadResponse = callClient.newCall(uploadRequest.build()).execute()) {
                 if (!uploadResponse.isSuccessful()) {
                     String errorBody = uploadResponse.body() != null ? uploadResponse.body().string() : "";
                     throw new RuntimeException(

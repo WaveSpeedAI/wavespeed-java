@@ -1,0 +1,32 @@
+name: tests
+
+# maven-packages.yml runs the same suite, but only on main and tags. This runs
+# it on pull requests so a failure is visible before the merge.
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+      # No WAVESPEED_API_KEY: RealApiTest guards on it with assumeTrue and
+      # skips, so the suite stays green without credentials.
+      - name: Test
+        run: mvn -B test --no-transfer-progress --file pom.xml

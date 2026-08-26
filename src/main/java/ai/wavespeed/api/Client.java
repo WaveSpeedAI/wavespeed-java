@@ -434,7 +434,8 @@ public class Client {
                 return output;
             }
 
-            if ("failed".equals(status) || "cancelled".equals(status) || "timeout".equals(status)) {
+            if ("failed".equals(status) || "cancelled".equals(status) ||
+                    "timeout".equals(status) || "deleted".equals(status)) {
                 String error = (String) data.get("error");
                 throw new RuntimeException(
                         "Prediction " + status + " (task_id: " + requestId + "): " +
@@ -481,15 +482,10 @@ public class Client {
     }
 
     private String getResultUrl(Map<String, Object> data) {
-        Object urlsObj = data.get("urls");
-        if (!(urlsObj instanceof Map)) {
-            return null;
-        }
-
-        @SuppressWarnings("unchecked")
-        Map<String, Object> urls = (Map<String, Object>) urlsObj;
-        Object resultUrl = urls.get("get");
-        return resultUrl instanceof String ? (String) resultUrl : null;
+        Object taskId = data.get("id");
+        return taskId instanceof String
+                ? this.baseUrl + "/api/v3/predictions/" + taskId + "/result"
+                : null;
     }
 
     private int getResultCode(Map<String, Object> data) {

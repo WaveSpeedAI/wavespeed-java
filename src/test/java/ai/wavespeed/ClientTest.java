@@ -164,7 +164,6 @@ class ClientTest {
                 "\"id\": \"req-timeout\", " +
                 "\"code\": 5004, " +
                 "\"error\": \"Sync mode timed out after 90 seconds. The prediction is still processing asynchronously.\", " +
-                "\"urls\": {\"get\": \"" + resultUrl + "\"}, " +
                 "\"outputs\": []}}";
         OkHttpClient mockHttpClient = createMockHttpClient(200, responseJson);
         Client client = createClientWithMockHttp("test-key", mockHttpClient);
@@ -187,7 +186,6 @@ class ClientTest {
                 "\"id\": \"req-timeout\", " +
                 "\"code\": 5004, " +
                 "\"error\": \"Sync mode timed out after 90 seconds. The prediction is still processing asynchronously.\", " +
-                "\"urls\": {\"get\": \"" + resultUrl + "\"}, " +
                 "\"outputs\": []}}";
         OkHttpClient mockHttpClient = createMockHttpClient(200, responseJson);
         Client client = createClientWithMockHttp("test-key", mockHttpClient);

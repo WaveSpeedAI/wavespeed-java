@@ -81,7 +81,7 @@ Global configuration via `Config.api`:
 - `baseUrl` - API base URL (default: https://api.wavespeed.ai)
 - `connectionTimeout` - Connection timeout in seconds (default: 10.0)
 - `timeout` - Overall wait limit in seconds (default: null = no limit; tasks may run for hours). When set, it also bounds each request
-- `readTimeout` - Read/call timeout of one async submit or result request when `timeout` is unset (default: 120.0; sync-mode submit has none)
+- `readTimeout` - Read/call timeout of one async submit or result request when `timeout` is unset (default: 120.0; sync-mode submit has none). File upload requests use the same read timeout (the file PUT has no total-transfer deadline)
 - `maxRetries` - Task-level retries (default: 0)
 - `maxConnectionRetries` - HTTP connection retries (default: 5)
 - `retryInterval` - Base retry delay in seconds (default: 1.0)

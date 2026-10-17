@@ -138,4 +138,69 @@ class ClientTimeoutTest {
             assertEquals(3, server.getRequestCount());
         }
     }
+
+    @Test
+    void uploadTicketAndPutDefaultTimeouts() {
+        Client c = new Client("k");
+        OkHttpClient ticket = c.requestClient(null, true);
+        assertEquals(120_000, ticket.readTimeoutMillis());
+        assertEquals(120_000, ticket.callTimeoutMillis());
+        OkHttpClient put = c.uploadPutClient(null);
+        assertEquals(120_000, put.readTimeoutMillis());
+        assertEquals(120_000, put.writeTimeoutMillis());
+        assertEquals(0, put.callTimeoutMillis());  // no total-transfer deadline
+    }
+
+    @Test
+    void uploadExplicitTimeoutKeepsTodaysBehavior() {
+        OkHttpClient put = new Client("k").uploadPutClient(7.0);
+        assertEquals(7_000, put.readTimeoutMillis());
+        assertEquals(7_000, put.callTimeoutMillis());
+    }
+
+    /**
+     * Raw PUT endpoint whose response head trickles in over ~1.6s, with a
+     * piece every 400ms (each gap is inside a 0.6s read timeout). Total time exceeds the read timeout; inactivity never does.
+     */
+    private String uploadAgainstSlowPut(Double explicit, java.nio.file.Path dir) throws Exception {
+        java.nio.file.Path f = dir.resolve("a.bin");
+        java.nio.file.Files.write(f, new byte[]{1, 2, 3});
+        try (java.net.ServerSocket raw = new java.net.ServerSocket(0);
+             MockWebServer server = new MockWebServer()) {
+            Thread t = new Thread(() -> {
+                try (java.net.Socket sock = raw.accept()) {
+                    java.io.InputStream in = sock.getInputStream();
+                    byte[] buf = new byte[8192];
+                    in.read(buf);  // request head + tiny body in one segment
+                    java.io.OutputStream out = sock.getOutputStream();
+                    sock.setTcpNoDelay(true);
+                    for (String part : new String[]{"HTTP/1.1 200 OK\r\n", "Content-Length: 0\r\n",
+                            "Connection: close\r\n", "\r\n"}) {
+                        Thread.sleep(400);
+                        out.write(part.getBytes());
+                        out.flush();
+                    }
+                } catch (Exception ignored) {
+                }
+            });
+            t.setDaemon(true);
+            t.start();
+            String putUrl = "http://127.0.0.1:" + raw.getLocalPort() + "/put";
+            server.enqueue(new MockResponse().setBody("{\"code\":200,\"data\":{\"download_url\":\"https://e/x\","
+                    + "\"upload\":{\"method\":\"PUT\",\"url\":\"" + putUrl + "\"}}}"));
+            return new Client("k", server.url("/").toString(), null, 0, 0, 0.0).upload(f.toString(), explicit);
+        }
+    }
+
+    @Test
+    void throttledPutLongerThanReadTimeoutIsNotAborted(@org.junit.jupiter.api.io.TempDir java.nio.file.Path dir) throws Exception {
+        Config.api.readTimeout = 0.6;
+        assertEquals("https://e/x", uploadAgainstSlowPut(null, dir));
+    }
+
+    @Test
+    void explicitTimeoutStillIsATotalDeadlineForUpload(@org.junit.jupiter.api.io.TempDir java.nio.file.Path dir) {
+        Config.api.readTimeout = 0.6;
+        assertThrows(RuntimeException.class, () -> uploadAgainstSlowPut(0.6, dir));
+    }
 }

@@ -353,6 +353,24 @@ public class Client {
                 .build();
     }
 
+    /**
+     * Client for the upload file PUT. A configured timeout behaves as for other
+     * requests. By default read and write timeouts are Config.api.readTimeout
+     * (socket inactivity) and there is no call timeout, since callTimeout is a
+     * total deadline that would abort a large upload that is still progressing.
+     */
+    OkHttpClient uploadPutClient(Double explicit) {
+        if (configuredTimeout(explicit) != null) {
+            return requestClient(explicit, true);
+        }
+        long ms = (long) (Config.api.readTimeout * 1000);
+        return httpClient.newBuilder()
+                .readTimeout(ms, TimeUnit.MILLISECONDS)
+                .writeTimeout(ms, TimeUnit.MILLISECONDS)
+                .callTimeout(0, TimeUnit.MILLISECONDS)
+                .build();
+    }
+
     /** Clock for the wait loop's overall cap (replaceable in tests). */
     java.util.function.LongSupplier nowMillis = System::currentTimeMillis;
 
@@ -681,7 +699,7 @@ public class Client {
      * Upload a file to WaveSpeed.
      *
      * @param file File path string to upload
-     * @param timeout Request timeout in seconds (null = Config.api.timeout; default no call limit)
+     * @param timeout Request timeout in seconds (null = Config.api.timeout; default: 120s read timeout per request, no total-transfer limit on the file PUT)
      * @return URL of the uploaded file
      * @throws IllegalArgumentException if API key is not configured
      * @throws IllegalArgumentException if file path does not exist
@@ -713,8 +731,11 @@ public class Client {
             payload.put("content_type", contentType);
         }
 
-        // Uploads can legitimately take long: only a configured timeout bounds the call.
-        OkHttpClient callClient = requestClient(timeout, false);
+        // Ticket request: same bounded single-request timeouts as other requests.
+        // The file PUT uses uploadPutClient(): an inactivity (read/write) timeout
+        // without a total-transfer deadline, so a large progressing upload is not aborted.
+        OkHttpClient callClient = requestClient(timeout, true);
+        OkHttpClient putClient = uploadPutClient(timeout);
 
         Request request = addClientHeaders(new Request.Builder()
                 .url(this.baseUrl + "/api/v3/media/uploads")
@@ -766,7 +787,7 @@ public class Client {
                 uploadHeaders.forEach((key, value) -> uploadRequest.addHeader(key, String.valueOf(value)));
             }
 
-            try (Response uploadResponse = callClient.newCall(uploadRequest.build()).execute()) {
+            try (Response uploadResponse = putClient.newCall(uploadRequest.build()).execute()) {
                 if (!uploadResponse.isSuccessful()) {
                     String errorBody = uploadResponse.body() != null ? uploadResponse.body().string() : "";
                     throw new RuntimeException(

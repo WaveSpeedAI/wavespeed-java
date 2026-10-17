@@ -8,7 +8,7 @@ public final class Version {
     /**
      * The SDK version string.
      */
-    public static final String VERSION = "0.2.5";
+    public static final String VERSION = "0.2.6";
 
     private Version() {
         // Prevent instantiation

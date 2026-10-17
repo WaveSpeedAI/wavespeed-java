@@ -94,7 +94,7 @@ public class Client {
         this.httpClient = new OkHttpClient.Builder()
                 .retryOnConnectionFailure(false)
                 .connectTimeout((long) (connTimeout * 1000), TimeUnit.MILLISECONDS)
-                .readTimeout((long) (Config.api.readTimeout * 1000), TimeUnit.MILLISECONDS)
+                .readTimeout((long) (readSeconds(Kind.GET) * 1000), TimeUnit.MILLISECONDS)
                 .build();
 
         this.gson = new Gson();
@@ -254,8 +254,8 @@ public class Client {
         }
 
         // Sync mode keeps this POST open until the task finishes, so it only has
-        // a timeout when one is configured; async submit falls back to readTimeout.
-        OkHttpClient callClient = requestClient(timeout, !enableSyncMode);
+        // a timeout when one is configured; async submit falls back to its per-type read timeout.
+        OkHttpClient callClient = requestClient(timeout, enableSyncMode ? Kind.SYNC_SUBMIT : Kind.SUBMIT);
 
         Request request = addClientHeaders(new Request.Builder()
                 .url(url)
@@ -330,22 +330,36 @@ public class Client {
         return explicit != null ? explicit : Config.api.timeout;
     }
 
+    /** Request types with their own default read timeout. */
+    enum Kind { GET, SUBMIT, UPLOAD, SYNC_SUBMIT }
+
+    /**
+     * Default read timeout in seconds for a request type, or null for none.
+     * Config.api.readTimeout (when set) overrides GET, SUBMIT and UPLOAD, never
+     * SYNC_SUBMIT, which stays open until the task finishes.
+     */
+    static Double readSeconds(Kind kind) {
+        switch (kind) {
+            case SYNC_SUBMIT: return null;
+            case GET: return Config.api.readTimeout != null ? Config.api.readTimeout : Config.api.readTimeoutGet;
+            case SUBMIT: return Config.api.readTimeout != null ? Config.api.readTimeout : Config.api.readTimeoutSubmit;
+            default: return Config.api.readTimeout != null ? Config.api.readTimeout : Config.api.readTimeoutUpload;
+        }
+    }
+
     /**
      * Per-request client. A configured timeout applies as connect (capped),
-     * read and call timeout, as before. Without one, requests that are bounded
-     * by default use Config.api.readTimeout for read and call; the others
-     * (sync submit) have no read/call timeout (OkHttp 0 = none).
+     * read and call timeout, as before. Without one, the type's default read
+     * timeout applies as read and call; sync submit has none (OkHttp 0 = none).
      */
-    OkHttpClient requestClient(Double explicit, boolean boundedByDefault) {
+    OkHttpClient requestClient(Double explicit, Kind kind) {
         Double configured = configuredTimeout(explicit);
+        if (configured == null) {
+            configured = readSeconds(kind);
+        }
         if (configured != null) {
             double connect = Math.min(httpClient.connectTimeoutMillis() / 1000.0, configured);
             return perCallClient(connect, configured);
-        }
-        if (boundedByDefault) {
-            double rt = Config.api.readTimeout;
-            double connect = Math.min(httpClient.connectTimeoutMillis() / 1000.0, rt);
-            return perCallClient(connect, rt);
         }
         return httpClient.newBuilder()
                 .readTimeout(0, TimeUnit.MILLISECONDS)
@@ -355,15 +369,15 @@ public class Client {
 
     /**
      * Client for the upload file PUT. A configured timeout behaves as for other
-     * requests. By default read and write timeouts are Config.api.readTimeout
+     * requests. By default read and write timeouts are the upload read timeout
      * (socket inactivity) and there is no call timeout, since callTimeout is a
      * total deadline that would abort a large upload that is still progressing.
      */
     OkHttpClient uploadPutClient(Double explicit) {
         if (configuredTimeout(explicit) != null) {
-            return requestClient(explicit, true);
+            return requestClient(explicit, Kind.UPLOAD);
         }
-        long ms = (long) (Config.api.readTimeout * 1000);
+        long ms = (long) (readSeconds(Kind.UPLOAD) * 1000);
         return httpClient.newBuilder()
                 .readTimeout(ms, TimeUnit.MILLISECONDS)
                 .writeTimeout(ms, TimeUnit.MILLISECONDS)
@@ -388,7 +402,7 @@ public class Client {
      */
     private Map<String, Object> getResult(String requestId, Double timeout) {
         String url = this.baseUrl + "/api/v3/predictions/" + requestId + "/result";
-        OkHttpClient callClient = requestClient(timeout, true);
+        OkHttpClient callClient = requestClient(timeout, Kind.GET);
 
         for (int retry = 0; retry <= maxConnectionRetries; retry++) {
             try {
@@ -699,7 +713,7 @@ public class Client {
      * Upload a file to WaveSpeed.
      *
      * @param file File path string to upload
-     * @param timeout Request timeout in seconds (null = Config.api.timeout; default: 120s read timeout per request, no total-transfer limit on the file PUT)
+     * @param timeout Request timeout in seconds (null = Config.api.timeout; default: per-type read timeout, 120s for uploads with no total-transfer limit on the file PUT)
      * @return URL of the uploaded file
      * @throws IllegalArgumentException if API key is not configured
      * @throws IllegalArgumentException if file path does not exist
@@ -734,7 +748,7 @@ public class Client {
         // Ticket request: same bounded single-request timeouts as other requests.
         // The file PUT uses uploadPutClient(): an inactivity (read/write) timeout
         // without a total-transfer deadline, so a large progressing upload is not aborted.
-        OkHttpClient callClient = requestClient(timeout, true);
+        OkHttpClient callClient = requestClient(timeout, Kind.UPLOAD);
         OkHttpClient putClient = uploadPutClient(timeout);
 
         Request request = addClientHeaders(new Request.Builder()

@@ -19,7 +19,8 @@ class ConfigTest {
         assertInstanceOf(String.class, Config.api.baseUrl);
         assertTrue(Config.api.connectionTimeout > 0);
         assertTrue(Config.api.timeout == null || Config.api.timeout > 0);
-        assertTrue(Config.api.readTimeout > 0);
+        assertTrue(Config.api.readTimeout == null || Config.api.readTimeout > 0);
+        assertTrue(Config.api.readTimeoutGet > 0 && Config.api.readTimeoutSubmit > 0 && Config.api.readTimeoutUpload > 0);
         assertTrue(Config.api.maxRetries >= 0);
         assertTrue(Config.api.maxConnectionRetries >= 0);
         assertTrue(Config.api.retryInterval > 0);
@@ -31,7 +32,10 @@ class ConfigTest {
         assertEquals("https://api.wavespeed.ai", Config.api.baseUrl);
         assertEquals(10.0, Config.api.connectionTimeout);
         assertNull(Config.api.timeout);  // no overall cap by default
-        assertEquals(120.0, Config.api.readTimeout);
+        assertNull(Config.api.readTimeout);
+        assertEquals(30.0, Config.api.readTimeoutGet);
+        assertEquals(60.0, Config.api.readTimeoutSubmit);
+        assertEquals(120.0, Config.api.readTimeoutUpload);
         assertEquals(0, Config.api.maxRetries);
         assertEquals(5, Config.api.maxConnectionRetries);
         assertEquals(1.0, Config.api.retryInterval);

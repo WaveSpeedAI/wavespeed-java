@@ -81,7 +81,10 @@ Global configuration via `Config.api`:
 - `baseUrl` - API base URL (default: https://api.wavespeed.ai)
 - `connectionTimeout` - Connection timeout in seconds (default: 10.0)
 - `timeout` - Overall wait limit in seconds (default: null = no limit; tasks may run for hours). When set, it also bounds each request
-- `readTimeout` - Read/call timeout of one async submit or result request when `timeout` is unset (default: 120.0; sync-mode submit has none). File upload requests use the same read timeout (the file PUT has no total-transfer deadline)
+- `readTimeoutGet` - Read/call timeout of one result query/GET when `timeout` is unset (default: 30.0)
+- `readTimeoutSubmit` - Same for the async submit POST (default: 60.0; a submit timeout is ambiguous, so more headroom)
+- `readTimeoutUpload` - Read timeout of each upload request, ticket and file PUT (default: 120.0; the file PUT has no total-transfer deadline)
+- `readTimeout` - Optional single override (default: null) replacing the three above; never applies to sync-mode submit, which has no default timeout
 - `maxRetries` - Task-level retries (default: 0)
 - `maxConnectionRetries` - HTTP connection retries (default: 5)
 - `retryInterval` - Base retry delay in seconds (default: 1.0)
@@ -104,7 +107,8 @@ Client client = new Client(
 - `WAVESPEED_BASE_URL` - Base URL (default: https://api.wavespeed.ai)
 - `WAVESPEED_CONNECTION_TIMEOUT` - Connection timeout (default: 10.0)
 - `WAVESPEED_TIMEOUT` - Overall wait limit (default: unset = no limit)
-- `WAVESPEED_READ_TIMEOUT` - Per-request read timeout (default: 120.0)
+- `WAVESPEED_READ_TIMEOUT` - Override for all per-request read timeouts except sync submit (default: unset)
+- `WAVESPEED_READ_TIMEOUT_GET` / `_SUBMIT` / `_UPLOAD` - Per-type defaults (30.0 / 60.0 / 120.0)
 - `WAVESPEED_MAX_RETRIES` - Task-level retries (default: 0)
 - `WAVESPEED_MAX_CONNECTION_RETRIES` - HTTP retries (default: 5)
 - `WAVESPEED_RETRY_INTERVAL` - Retry interval (default: 1.0)

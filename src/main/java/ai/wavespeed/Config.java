@@ -50,12 +50,33 @@ public final class Config {
         public Double timeout;
 
         /**
-         * Read and call timeout in seconds for a single async submit or
-         * result-query request when no timeout is configured, so a hung
-         * request fails on its own. Sync-mode submit is not subject to it.
-         * Default: 120.0 (WAVESPEED_READ_TIMEOUT)
+         * Optional single override for the per-request read timeout in seconds.
+         * When set (or WAVESPEED_READ_TIMEOUT), it replaces the per-type defaults
+         * below for result/GET queries, async submit and uploads. It never
+         * applies to sync-mode submit. Default: null.
          */
-        public double readTimeout;
+        public Double readTimeout;
+
+        /**
+         * Read and call timeout in seconds of one result query or other
+         * read-only GET when no timeout is configured.
+         * Default: 30.0 (WAVESPEED_READ_TIMEOUT_GET)
+         */
+        public double readTimeoutGet;
+
+        /**
+         * Read and call timeout in seconds of the async submit POST when no
+         * timeout is configured. A submit timeout is an ambiguous outcome, so it
+         * gets more headroom. Default: 60.0 (WAVESPEED_READ_TIMEOUT_SUBMIT)
+         */
+        public double readTimeoutSubmit;
+
+        /**
+         * Read timeout in seconds for each upload request (ticket and file PUT)
+         * when no timeout is configured. The file PUT has no total-transfer
+         * deadline. Default: 120.0 (WAVESPEED_READ_TIMEOUT_UPLOAD)
+         */
+        public double readTimeoutUpload;
 
         /**
          * Maximum number of retries for the entire operation (task-level retries).
@@ -84,7 +105,10 @@ public final class Config {
             this.baseUrl = getEnv("WAVESPEED_BASE_URL", "https://api.wavespeed.ai");
             this.connectionTimeout = getEnvDouble("WAVESPEED_CONNECTION_TIMEOUT", 10.0);
             this.timeout = getEnvDoubleOrNull("WAVESPEED_TIMEOUT");
-            this.readTimeout = getEnvDouble("WAVESPEED_READ_TIMEOUT", 120.0);
+            this.readTimeout = getEnvDoubleOrNull("WAVESPEED_READ_TIMEOUT");
+            this.readTimeoutGet = getEnvDouble("WAVESPEED_READ_TIMEOUT_GET", 30.0);
+            this.readTimeoutSubmit = getEnvDouble("WAVESPEED_READ_TIMEOUT_SUBMIT", 60.0);
+            this.readTimeoutUpload = getEnvDouble("WAVESPEED_READ_TIMEOUT_UPLOAD", 120.0);
             this.maxRetries = getEnvInt("WAVESPEED_MAX_RETRIES", 0);
             this.maxConnectionRetries = getEnvInt("WAVESPEED_MAX_CONNECTION_RETRIES", 5);
             this.retryInterval = getEnvDouble("WAVESPEED_RETRY_INTERVAL", 1.0);

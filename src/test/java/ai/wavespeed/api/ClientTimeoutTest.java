@@ -16,20 +16,21 @@ import static org.junit.jupiter.api.Assertions.*;
 /** Timeout semantics: no default overall cap; bounded per-request defaults. */
 class ClientTimeoutTest {
     private Double savedTimeout;
-    private double savedRead;
+    private Double savedRead;
+    private double sg, ss, su;
 
     @BeforeEach
     void save() {
         savedTimeout = Config.api.timeout;
-        savedRead = Config.api.readTimeout;
+        savedRead = Config.api.readTimeout; sg = Config.api.readTimeoutGet; ss = Config.api.readTimeoutSubmit; su = Config.api.readTimeoutUpload;
         Config.api.timeout = null;
-        Config.api.readTimeout = 120.0;
+        Config.api.readTimeout = null;
     }
 
     @AfterEach
     void restore() {
         Config.api.timeout = savedTimeout;
-        Config.api.readTimeout = savedRead;
+        Config.api.readTimeout = savedRead; Config.api.readTimeoutGet = sg; Config.api.readTimeoutSubmit = ss; Config.api.readTimeoutUpload = su;
     }
 
     private static MockResponse submitOk() {
@@ -48,7 +49,10 @@ class ClientTimeoutTest {
     @Test
     void defaultConfigHasNoOverallCap() {
         assertNull(new ai.wavespeed.Config.Api().timeout);  // fresh default (env unset)
-        assertEquals(120.0, new Config.Api().readTimeout);
+        assertNull(new Config.Api().readTimeout);
+        assertEquals(30.0, new Config.Api().readTimeoutGet);
+        assertEquals(60.0, new Config.Api().readTimeoutSubmit);
+        assertEquals(120.0, new Config.Api().readTimeoutUpload);
     }
 
     @Test
@@ -95,31 +99,58 @@ class ClientTimeoutTest {
     }
 
     @Test
-    void asyncSubmitAndResultGetUseReadTimeoutDefault() {
+    void perTypeDefaults() {
         Client c = new Client("k");
-        OkHttpClient r = c.requestClient(null, true);
-        assertEquals(120_000, r.readTimeoutMillis());
-        assertEquals(120_000, r.callTimeoutMillis());
-        assertEquals(120_000, c.requestClient(null, true).callTimeoutMillis());
-        // base client read timeout is the bounded default, not infinite
-        Config.api.readTimeout = 30.0;
-        assertEquals(30_000, c.requestClient(null, true).readTimeoutMillis());
+        OkHttpClient get = c.requestClient(null, Client.Kind.GET);
+        assertEquals(30_000, get.readTimeoutMillis());
+        assertEquals(30_000, get.callTimeoutMillis());
+        OkHttpClient submit = c.requestClient(null, Client.Kind.SUBMIT);
+        assertEquals(60_000, submit.readTimeoutMillis());
+        assertEquals(60_000, submit.callTimeoutMillis());
+        OkHttpClient ticket = c.requestClient(null, Client.Kind.UPLOAD);
+        assertEquals(120_000, ticket.readTimeoutMillis());
+        OkHttpClient put = c.uploadPutClient(null);
+        assertEquals(120_000, put.readTimeoutMillis());
+        assertEquals(0, put.callTimeoutMillis());
+        assertEquals(0, c.requestClient(null, Client.Kind.SYNC_SUBMIT).readTimeoutMillis());
+    }
+
+    @Test
+    void overrideAppliesToGetSubmitUploadButNotSync() {
+        Config.api.readTimeout = 5.0;
+        Client c = new Client("k");
+        for (Client.Kind k : new Client.Kind[]{Client.Kind.GET, Client.Kind.SUBMIT, Client.Kind.UPLOAD}) {
+            assertEquals(5_000, c.requestClient(null, k).readTimeoutMillis(), k.name());
+            assertEquals(5_000, c.requestClient(null, k).callTimeoutMillis(), k.name());
+        }
+        OkHttpClient put = c.uploadPutClient(null);
+        assertEquals(5_000, put.readTimeoutMillis());
+        assertEquals(0, put.callTimeoutMillis());
+        assertEquals(0, c.requestClient(null, Client.Kind.SYNC_SUBMIT).readTimeoutMillis());
+        assertEquals(0, c.requestClient(null, Client.Kind.SYNC_SUBMIT).callTimeoutMillis());
+    }
+
+    @Test
+    void baseClientReadTimeoutIsTheGetDefaultNotInfinite() throws Exception {
+        java.lang.reflect.Field f = Client.class.getDeclaredField("httpClient");
+        f.setAccessible(true);
+        assertEquals(30_000, ((OkHttpClient) f.get(new Client("k"))).readTimeoutMillis());
     }
 
     @Test
     void syncSubmitHasNoTimeoutByDefaultAndExplicitWhenGiven() {
         Client c = new Client("k");
-        OkHttpClient none = c.requestClient(null, false);
+        OkHttpClient none = c.requestClient(null, Client.Kind.SYNC_SUBMIT);
         assertEquals(0, none.readTimeoutMillis());
         assertEquals(0, none.callTimeoutMillis());
-        OkHttpClient explicit = c.requestClient(7.0, false);
+        OkHttpClient explicit = c.requestClient(7.0, Client.Kind.SYNC_SUBMIT);
         assertEquals(7_000, explicit.readTimeoutMillis());
         assertEquals(7_000, explicit.callTimeoutMillis());
     }
 
     @Test
     void explicitTimeoutKeepsPerRequestBehaviorForAsync() {
-        OkHttpClient r = new Client("k").requestClient(7.0, true);
+        OkHttpClient r = new Client("k").requestClient(7.0, Client.Kind.SUBMIT);
         assertEquals(7_000, r.readTimeoutMillis());
         assertEquals(7_000, r.callTimeoutMillis());
         assertEquals(7_000, r.connectTimeoutMillis());  // min(10s, 7s)
@@ -137,18 +168,6 @@ class ClientTimeoutTest {
             assertNotNull(out.get("outputs"));
             assertEquals(3, server.getRequestCount());
         }
-    }
-
-    @Test
-    void uploadTicketAndPutDefaultTimeouts() {
-        Client c = new Client("k");
-        OkHttpClient ticket = c.requestClient(null, true);
-        assertEquals(120_000, ticket.readTimeoutMillis());
-        assertEquals(120_000, ticket.callTimeoutMillis());
-        OkHttpClient put = c.uploadPutClient(null);
-        assertEquals(120_000, put.readTimeoutMillis());
-        assertEquals(120_000, put.writeTimeoutMillis());
-        assertEquals(0, put.callTimeoutMillis());  // no total-transfer deadline
     }
 
     @Test

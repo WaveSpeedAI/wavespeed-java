@@ -82,7 +82,7 @@ Map<String, Object> output = Wavespeed.run(
     36000.0,  // timeout - Max wait time in seconds (default: 36000.0)
     1.0,      // pollInterval - Status check interval (default: 1.0)
     false,    // enableSyncMode - Best-effort sync result attempt (default: false)
-    null      // maxRetries - Task-level retries (default: 0)
+    null      // maxRetries - Task re-runs after a reported failure; each is a new paid task (default: 0)
 );
 ```
 
@@ -110,13 +110,19 @@ never retried, because a failed submission may still have created the task
 on the server. When that happens the SDK throws
 `ai.wavespeed.WavespeedSubmissionException`.
 
+`maxRetries` (default: 0) only re-runs a task that itself reported failure with
+a transient HTTP 5xx/429. Each re-run submits a **new, separately billed task**.
+Poll-side HTTP errors and wait timeouts never re-submit. There is no overall
+timeout requirement: tasks can run for hours, and a client-side wait timeout
+does not mean the task failed.
+
 ```java
 import ai.wavespeed.api.Client;
 
 // Simple retry configuration
 Client client = new Client(
     "your-api-key",
-    3,    // maxRetries - Task-level retries (default: 0)
+    0,    // maxRetries - Task re-runs after a reported failure; each is a new paid task (default: 0)
     5,    // maxConnectionRetries - Result-query GET retries; the submission POST is never retried (default: 5)
     1.0   // retryInterval - Base delay between retries in seconds (default: 1.0)
 );

@@ -24,9 +24,9 @@
 
 ## Installation
 
-Download `wavespeed-java-sdk-0.2.6.jar` from the
-[v0.2.6 release](https://github.com/WaveSpeedAI/wavespeed-java/releases/tag/v0.2.6)
-and add it to your application's classpath (coordinates: `ai.wavespeed:wavespeed-java-sdk:0.2.6`).
+Download `wavespeed-java-sdk-0.2.7.jar` from the
+[v0.2.7 release](https://github.com/WaveSpeedAI/wavespeed-java/releases/tag/v0.2.7)
+and add it to your application's classpath (coordinates: `ai.wavespeed:wavespeed-java-sdk:0.2.7`).
 
 The SDK is not published to Maven Central (or any other registry) yet: the
 release workflow currently only builds the JARs, so GitHub release assets are

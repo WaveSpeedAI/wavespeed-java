@@ -482,10 +482,16 @@ public class Client {
             return false;
         }
 
-        // Re-run only when the task itself reported failure. Poll-side HTTP
+        // Re-run only when the task itself reported a transient upstream failure
+        // (HTTP 5xx / 429 in its error text, as before); a deterministic failure
+        // such as a content-policy rejection would fail again. Poll-side HTTP
         // errors, poll timeouts and wait timeouts leave a task that already
         // exists (and may be billed), so they must not lead to another POST.
-        return error instanceof WavespeedTaskFailedException;
+        if (!(error instanceof WavespeedTaskFailedException)) {
+            return false;
+        }
+        String message = error.getMessage() == null ? "" : error.getMessage();
+        return message.contains("HTTP 5") || message.contains("HTTP 429");
     }
 
     private String getResultUrl(Map<String, Object> data) {

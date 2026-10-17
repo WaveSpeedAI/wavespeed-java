@@ -453,7 +453,7 @@ class ClientTest {
         try (MockWebServer server = new MockWebServer()) {
             server.start();
             server.enqueue(json(200, "{\"data\": {\"id\": \"req-a\"}}"));
-            server.enqueue(json(200, "{\"data\": {\"status\": \"failed\", \"error\": \"boom\"}}"));
+            server.enqueue(json(200, "{\"data\": {\"status\": \"failed\", \"error\": \"HTTP 500 boom\"}}"));
             server.enqueue(json(200, "{\"data\": {\"id\": \"req-b\"}}"));
             server.enqueue(json(200, "{\"data\": {\"status\": \"completed\", \"outputs\": [\"ok\"]}}"));
 
@@ -464,6 +464,25 @@ class ClientTest {
 
             assertEquals(List.of("ok"), result.get("outputs"));
             assertEquals(4, server.getRequestCount());
+        }
+    }
+
+    @Test
+    void testDeterministicTaskFailureIsNotReRun() throws Exception {
+        try (MockWebServer server = new MockWebServer()) {
+            server.start();
+            server.enqueue(json(200, "{\"data\": {\"id\": \"req-d\"}}"));
+            server.enqueue(json(200, "{\"data\": {\"status\": \"failed\", " +
+                    "\"error\": \"content policy violation\"}}"));
+            server.enqueue(json(200, "{\"data\": {\"id\": \"req-dup\"}}"));
+
+            Client client = new Client("test-key", server.url("/").toString(), null, 3, 0, 0.01);
+
+            assertThrows(RuntimeException.class, () ->
+                    client.run("wavespeed-ai/z-image/turbo", Map.of("prompt", "test"),
+                            30.0, 0.01, null, 3));
+
+            assertEquals(2, server.getRequestCount());
         }
     }
 

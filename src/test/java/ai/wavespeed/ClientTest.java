@@ -290,7 +290,7 @@ class ClientTest {
             );
             long elapsedMs = System.currentTimeMillis() - start;
 
-            // Shared-client read timeout is Config.api.timeout (36000s); only a
+            // Shared-client read timeout is Config.api.readTimeout (120s); only a
             // per-call timeout can fail this fast.
             assertTrue(elapsedMs < 10000,
                     "per-call timeout not applied; call took " + elapsedMs + "ms");

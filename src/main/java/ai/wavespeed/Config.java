@@ -42,10 +42,20 @@ public final class Config {
         public double connectionTimeout;
 
         /**
-         * Total API call timeout in seconds.
-         * Default: 36000.0 (10 hours)
+         * Overall time limit in seconds for waiting on a task.
+         * Default: null (no limit; the SDK waits until the task reaches a
+         * terminal status). Set it, or WAVESPEED_TIMEOUT, to bound the wait.
+         * A configured value also bounds each individual HTTP request.
          */
-        public double timeout;
+        public Double timeout;
+
+        /**
+         * Read and call timeout in seconds for a single async submit or
+         * result-query request when no timeout is configured, so a hung
+         * request fails on its own. Sync-mode submit is not subject to it.
+         * Default: 120.0 (WAVESPEED_READ_TIMEOUT)
+         */
+        public double readTimeout;
 
         /**
          * Maximum number of retries for the entire operation (task-level retries).
@@ -73,7 +83,8 @@ public final class Config {
             this.apiKey = System.getenv("WAVESPEED_API_KEY");
             this.baseUrl = getEnv("WAVESPEED_BASE_URL", "https://api.wavespeed.ai");
             this.connectionTimeout = getEnvDouble("WAVESPEED_CONNECTION_TIMEOUT", 10.0);
-            this.timeout = getEnvDouble("WAVESPEED_TIMEOUT", 36000.0);
+            this.timeout = getEnvDoubleOrNull("WAVESPEED_TIMEOUT");
+            this.readTimeout = getEnvDouble("WAVESPEED_READ_TIMEOUT", 120.0);
             this.maxRetries = getEnvInt("WAVESPEED_MAX_RETRIES", 0);
             this.maxConnectionRetries = getEnvInt("WAVESPEED_MAX_CONNECTION_RETRIES", 5);
             this.retryInterval = getEnvDouble("WAVESPEED_RETRY_INTERVAL", 1.0);
@@ -94,6 +105,18 @@ public final class Config {
                 }
             }
             return defaultValue;
+        }
+
+        private static Double getEnvDoubleOrNull(String key) {
+            String value = System.getenv(key);
+            if (value != null) {
+                try {
+                    return Double.parseDouble(value);
+                } catch (NumberFormatException e) {
+                    return null;
+                }
+            }
+            return null;
         }
 
         private static int getEnvInt(String key, int defaultValue) {

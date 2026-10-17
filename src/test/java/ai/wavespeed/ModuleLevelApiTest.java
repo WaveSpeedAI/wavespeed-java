@@ -21,7 +21,7 @@ class ModuleLevelApiTest {
         Config.api.apiKey = "test-key";
         Config.api.baseUrl = "https://api.wavespeed.ai";
         Config.api.connectionTimeout = 10.0;
-        Config.api.timeout = 36000.0;
+        Config.api.timeout = null;
         Config.api.maxRetries = 0;
         Config.api.maxConnectionRetries = 5;
         Config.api.retryInterval = 1.0;

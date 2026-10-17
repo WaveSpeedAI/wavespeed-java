@@ -86,7 +86,6 @@ public class Client {
         this.baseUrl = (baseUrl != null ? baseUrl : Config.api.baseUrl).replaceAll("/$", "");
 
         double connTimeout = connectionTimeout != null ? connectionTimeout : Config.api.connectionTimeout;
-        double totalTimeout = Config.api.timeout;
 
         // Build HTTP client. OkHttp's retryOnConnectionFailure defaults to true and
         // can silently re-send a request (including the submission POST) after a
@@ -95,7 +94,7 @@ public class Client {
         this.httpClient = new OkHttpClient.Builder()
                 .retryOnConnectionFailure(false)
                 .connectTimeout((long) (connTimeout * 1000), TimeUnit.MILLISECONDS)
-                .readTimeout((long) (totalTimeout * 1000), TimeUnit.MILLISECONDS)
+                .readTimeout((long) (Config.api.readTimeout * 1000), TimeUnit.MILLISECONDS)
                 .build();
 
         this.gson = new Gson();
@@ -254,15 +253,9 @@ public class Client {
             body.put("enable_sync_mode", true);
         }
 
-        double requestTimeout = timeout != null ? timeout : Config.api.timeout;
-        double connectTimeout = Math.min(
-                this.httpClient.connectTimeoutMillis() / 1000.0,
-                requestTimeout
-        );
-
-        // Per-call timeouts: connect uses the smaller of the client connect
-        // timeout and the request timeout; read/call enforce the request timeout.
-        OkHttpClient callClient = perCallClient(connectTimeout, requestTimeout);
+        // Sync mode keeps this POST open until the task finishes, so it only has
+        // a timeout when one is configured; async submit falls back to readTimeout.
+        OkHttpClient callClient = requestClient(timeout, !enableSyncMode);
 
         Request request = addClientHeaders(new Request.Builder()
                 .url(url)
@@ -329,6 +322,40 @@ public class Client {
                 .build();
     }
 
+    /**
+     * Effective configured timeout: the explicit argument, else
+     * Config.api.timeout (WAVESPEED_TIMEOUT). Null means no limit.
+     */
+    static Double configuredTimeout(Double explicit) {
+        return explicit != null ? explicit : Config.api.timeout;
+    }
+
+    /**
+     * Per-request client. A configured timeout applies as connect (capped),
+     * read and call timeout, as before. Without one, requests that are bounded
+     * by default use Config.api.readTimeout for read and call; the others
+     * (sync submit) have no read/call timeout (OkHttp 0 = none).
+     */
+    OkHttpClient requestClient(Double explicit, boolean boundedByDefault) {
+        Double configured = configuredTimeout(explicit);
+        if (configured != null) {
+            double connect = Math.min(httpClient.connectTimeoutMillis() / 1000.0, configured);
+            return perCallClient(connect, configured);
+        }
+        if (boundedByDefault) {
+            double rt = Config.api.readTimeout;
+            double connect = Math.min(httpClient.connectTimeoutMillis() / 1000.0, rt);
+            return perCallClient(connect, rt);
+        }
+        return httpClient.newBuilder()
+                .readTimeout(0, TimeUnit.MILLISECONDS)
+                .callTimeout(0, TimeUnit.MILLISECONDS)
+                .build();
+    }
+
+    /** Clock for the wait loop's overall cap (replaceable in tests). */
+    java.util.function.LongSupplier nowMillis = System::currentTimeMillis;
+
     private static boolean isRetryableStatus(int code) {
         return code == 429 || code == 500 || code == 502 || code == 503 || code == 504;
     }
@@ -343,12 +370,7 @@ public class Client {
      */
     private Map<String, Object> getResult(String requestId, Double timeout) {
         String url = this.baseUrl + "/api/v3/predictions/" + requestId + "/result";
-        double requestTimeout = timeout != null ? timeout : Config.api.timeout;
-        double connectTimeout = Math.min(
-                this.httpClient.connectTimeoutMillis() / 1000.0,
-                requestTimeout
-        );
-        OkHttpClient callClient = perCallClient(connectTimeout, requestTimeout);
+        OkHttpClient callClient = requestClient(timeout, true);
 
         for (int retry = 0; retry <= maxConnectionRetries; retry++) {
             try {
@@ -414,7 +436,7 @@ public class Client {
      * Wait for prediction to complete.
      *
      * @param requestId The prediction request ID
-     * @param timeout Maximum wait time in seconds (null = no timeout)
+     * @param timeout Maximum wait time in seconds (null = Config.api.timeout, which defaults to no limit)
      * @param pollInterval Time between polls in seconds
      * @return Map with "outputs" array
      * @throws RuntimeException if prediction fails
@@ -425,15 +447,17 @@ public class Client {
             Double timeout,
             double pollInterval
     ) {
-        long startTime = System.currentTimeMillis();
+        // Overall cap: explicit timeout, else Config.api.timeout; null = wait until terminal status.
+        Double cap = configuredTimeout(timeout);
+        long startTime = nowMillis.getAsLong();
 
         while (true) {
             // Check timeout
-            if (timeout != null) {
-                double elapsed = (System.currentTimeMillis() - startTime) / 1000.0;
-                if (elapsed >= timeout) {
+            if (cap != null) {
+                double elapsed = (nowMillis.getAsLong() - startTime) / 1000.0;
+                if (elapsed >= cap) {
                     throw new RuntimeException(
-                            "Prediction timed out after " + timeout + " seconds (task_id: " + requestId + ")"
+                            "Prediction timed out after " + cap + " seconds (task_id: " + requestId + ")"
                     );
                 }
             }
@@ -544,7 +568,7 @@ public class Client {
      *
      * @param model Model identifier (e.g., "wavespeed-ai/z-image/turbo")
      * @param input Input parameters for the model
-     * @param timeout Maximum time to wait for completion (null = no timeout)
+     * @param timeout Maximum time to wait for completion (null = Config.api.timeout; default no limit)
      * @param pollInterval Interval between status checks in seconds (null = 1.0)
      * @param enableSyncMode If true, use synchronous mode (best-effort single request) (null = false)
      * @param maxRetries Maximum task-level retries (null = use client setting)
@@ -657,7 +681,7 @@ public class Client {
      * Upload a file to WaveSpeed.
      *
      * @param file File path string to upload
-     * @param timeout Total API call timeout in seconds (null = use default)
+     * @param timeout Request timeout in seconds (null = Config.api.timeout; default no call limit)
      * @return URL of the uploaded file
      * @throws IllegalArgumentException if API key is not configured
      * @throws IllegalArgumentException if file path does not exist
@@ -689,12 +713,8 @@ public class Client {
             payload.put("content_type", contentType);
         }
 
-        double requestTimeout = timeout != null ? timeout : Config.api.timeout;
-        double connectTimeout = Math.min(
-                this.httpClient.connectTimeoutMillis() / 1000.0,
-                requestTimeout
-        );
-        OkHttpClient callClient = perCallClient(connectTimeout, requestTimeout);
+        // Uploads can legitimately take long: only a configured timeout bounds the call.
+        OkHttpClient callClient = requestClient(timeout, false);
 
         Request request = addClientHeaders(new Request.Builder()
                 .url(this.baseUrl + "/api/v3/media/uploads")
@@ -858,7 +878,7 @@ public class Client {
      *
      * @param model Model identifier
      * @param input Input parameters
-     * @param timeout Maximum time to wait for completion (null = no timeout)
+     * @param timeout Maximum time to wait for completion (null = Config.api.timeout; default no limit)
      * @param pollInterval Interval between status checks in seconds (null = 1.0)
      * @param enableSyncMode If true, use synchronous mode (best-effort single request) (null = false)
      * @param maxRetries Maximum task-level retries (null = use client setting)

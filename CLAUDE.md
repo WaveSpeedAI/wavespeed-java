@@ -80,7 +80,8 @@ Global configuration via `Config.api`:
 - `apiKey` - WaveSpeed API key
 - `baseUrl` - API base URL (default: https://api.wavespeed.ai)
 - `connectionTimeout` - Connection timeout in seconds (default: 10.0)
-- `timeout` - Total API call timeout in seconds (default: 36000.0)
+- `timeout` - Overall wait limit in seconds (default: null = no limit; tasks may run for hours). When set, it also bounds each request
+- `readTimeout` - Read/call timeout of one async submit or result request when `timeout` is unset (default: 120.0; sync-mode submit has none)
 - `maxRetries` - Task-level retries (default: 0)
 - `maxConnectionRetries` - HTTP connection retries (default: 5)
 - `retryInterval` - Base retry delay in seconds (default: 1.0)
@@ -102,7 +103,8 @@ Client client = new Client(
 - `WAVESPEED_API_KEY` - API key
 - `WAVESPEED_BASE_URL` - Base URL (default: https://api.wavespeed.ai)
 - `WAVESPEED_CONNECTION_TIMEOUT` - Connection timeout (default: 10.0)
-- `WAVESPEED_TIMEOUT` - Total timeout (default: 36000.0)
+- `WAVESPEED_TIMEOUT` - Overall wait limit (default: unset = no limit)
+- `WAVESPEED_READ_TIMEOUT` - Per-request read timeout (default: 120.0)
 - `WAVESPEED_MAX_RETRIES` - Task-level retries (default: 0)
 - `WAVESPEED_MAX_CONNECTION_RETRIES` - HTTP retries (default: 5)
 - `WAVESPEED_RETRY_INTERVAL` - Retry interval (default: 1.0)

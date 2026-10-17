@@ -79,7 +79,7 @@ Map<String, Object> output = client.run(
 Map<String, Object> output = Wavespeed.run(
     "wavespeed-ai/z-image/turbo",
     Map.of("prompt", "Cat"),
-    36000.0,  // timeout - Max wait time in seconds (default: 36000.0)
+    null,     // timeout - Max wait time in seconds (default: null = wait until the task finishes, no limit)
     1.0,      // pollInterval - Status check interval (default: 1.0)
     false,    // enableSyncMode - Best-effort sync result attempt (default: false)
     null      // maxRetries - Task re-runs after a reported failure; each is a new paid task (default: 0)

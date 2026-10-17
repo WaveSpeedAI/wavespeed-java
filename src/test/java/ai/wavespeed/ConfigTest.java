@@ -18,7 +18,8 @@ class ConfigTest {
         assertTrue(Config.api.apiKey == null || Config.api.apiKey instanceof String);
         assertInstanceOf(String.class, Config.api.baseUrl);
         assertTrue(Config.api.connectionTimeout > 0);
-        assertTrue(Config.api.timeout > 0);
+        assertTrue(Config.api.timeout == null || Config.api.timeout > 0);
+        assertTrue(Config.api.readTimeout > 0);
         assertTrue(Config.api.maxRetries >= 0);
         assertTrue(Config.api.maxConnectionRetries >= 0);
         assertTrue(Config.api.retryInterval > 0);
@@ -29,7 +30,8 @@ class ConfigTest {
         // Test that API config has correct default values
         assertEquals("https://api.wavespeed.ai", Config.api.baseUrl);
         assertEquals(10.0, Config.api.connectionTimeout);
-        assertEquals(36000.0, Config.api.timeout);
+        assertNull(Config.api.timeout);  // no overall cap by default
+        assertEquals(120.0, Config.api.readTimeout);
         assertEquals(0, Config.api.maxRetries);
         assertEquals(5, Config.api.maxConnectionRetries);
         assertEquals(1.0, Config.api.retryInterval);

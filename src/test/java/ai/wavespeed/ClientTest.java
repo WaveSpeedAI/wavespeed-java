@@ -326,6 +326,183 @@ class ClientTest {
         }
     }
 
+    private static MockResponse json(int code, String body) {
+        return new MockResponse().setResponseCode(code).setBody(body);
+    }
+
+    @Test
+    void testPollRetriesTransientStatusThenSucceeds() throws Exception {
+        try (MockWebServer server = new MockWebServer()) {
+            server.start();
+            server.enqueue(json(200, "{\"data\": {\"id\": \"req-502\"}}"));
+            server.enqueue(json(502, "Bad Gateway"));
+            server.enqueue(json(502, "Bad Gateway"));
+            server.enqueue(json(200, "{\"data\": {\"status\": \"completed\", " +
+                    "\"id\": \"req-502\", \"outputs\": [\"ok\"]}}"));
+
+            Client client = new Client("test-key", server.url("/").toString(), null, 0, 5, 0.01);
+
+            Map<String, Object> result = client.run("wavespeed-ai/z-image/turbo",
+                    Map.of("prompt", "test"), 30.0, 0.01, null, null);
+
+            assertEquals(List.of("ok"), result.get("outputs"));
+            // 1 submit + 2 failed polls + 1 successful poll
+            assertEquals(4, server.getRequestCount());
+        }
+    }
+
+    @Test
+    void testPollTransientStatusExhaustedKeepsTaskId() throws Exception {
+        for (int code : new int[]{429, 500, 502, 503, 504}) {
+            try (MockWebServer server = new MockWebServer()) {
+                server.start();
+                server.enqueue(json(200, "{\"data\": {\"id\": \"req-forever\"}}"));
+                for (int i = 0; i < 3; i++) {
+                    server.enqueue(json(code, "upstream down"));
+                }
+
+                Client client = new Client("test-key", server.url("/").toString(), null, 0, 2, 0.01);
+
+                RuntimeException error = assertThrows(RuntimeException.class, () ->
+                        client.run("wavespeed-ai/z-image/turbo", Map.of("prompt", "test"),
+                                30.0, 0.01, null, null));
+
+                assertTrue(error.getMessage().contains("req-forever"), error.getMessage());
+                assertTrue(error.getMessage().contains("HTTP " + code), error.getMessage());
+                // 1 submit + (maxConnectionRetries + 1) polls
+                assertEquals(4, server.getRequestCount());
+            }
+        }
+    }
+
+    @Test
+    void testPollNonTransientStatusIsNotRetried() throws Exception {
+        for (int code : new int[]{400, 401, 403, 404}) {
+            try (MockWebServer server = new MockWebServer()) {
+                server.start();
+                server.enqueue(json(200, "{\"data\": {\"id\": \"req-4xx\"}}"));
+                server.enqueue(json(code, "nope"));
+                server.enqueue(json(200, "{\"data\": {\"status\": \"completed\", \"outputs\": []}}"));
+
+                Client client = new Client("test-key", server.url("/").toString(), null, 0, 5, 0.01);
+
+                RuntimeException error = assertThrows(RuntimeException.class, () ->
+                        client.run("wavespeed-ai/z-image/turbo", Map.of("prompt", "test"),
+                                30.0, 0.01, null, null));
+
+                assertTrue(error.getMessage().contains("HTTP " + code));
+                assertTrue(error.getMessage().contains("req-4xx"));
+                assertEquals(2, server.getRequestCount());
+            }
+        }
+    }
+
+    @Test
+    void testRunDoesNotResubmitAfterPollFailure() throws Exception {
+        try (MockWebServer server = new MockWebServer()) {
+            server.start();
+            server.enqueue(json(200, "{\"data\": {\"id\": \"req-poll\"}}"));
+            server.enqueue(json(502, "Bad Gateway"));
+            server.enqueue(json(502, "Bad Gateway"));
+            // If the SDK wrongly re-POSTed, this would be consumed as a new task.
+            server.enqueue(json(200, "{\"data\": {\"id\": \"req-dup\"}}"));
+
+            Client client = new Client("test-key", server.url("/").toString(), null, 3, 1, 0.01);
+
+            RuntimeException error = assertThrows(RuntimeException.class, () ->
+                    client.run("wavespeed-ai/z-image/turbo", Map.of("prompt", "test"),
+                            30.0, 0.01, null, 3));
+
+            assertTrue(error.getMessage().contains("req-poll"));
+            // 1 submit + 2 polls, no second POST.
+            assertEquals(3, server.getRequestCount());
+            assertEquals("POST", server.takeRequest().getMethod());
+            assertEquals("GET", server.takeRequest().getMethod());
+            assertEquals("GET", server.takeRequest().getMethod());
+        }
+    }
+
+    @Test
+    void testRunDoesNotResubmitAfterWaitTimeout() throws Exception {
+        try (MockWebServer server = new MockWebServer()) {
+            server.start();
+            server.enqueue(json(200, "{\"data\": {\"id\": \"req-slow\"}}"));
+            for (int i = 0; i < 50; i++) {
+                server.enqueue(json(200, "{\"data\": {\"status\": \"processing\"}}"));
+            }
+
+            Client client = new Client("test-key", server.url("/").toString(), null, 3, 0, 0.01);
+
+            RuntimeException error = assertThrows(RuntimeException.class, () ->
+                    client.run("wavespeed-ai/z-image/turbo", Map.of("prompt", "test"),
+                            0.3, 0.05, null, 3));
+
+            assertTrue(error.getMessage().contains("timed out"));
+            int posts = 0;
+            for (int i = 0, n = server.getRequestCount(); i < n; i++) {
+                if ("POST".equals(server.takeRequest().getMethod())) {
+                    posts++;
+                }
+            }
+            assertEquals(1, posts);
+        }
+    }
+
+    @Test
+    void testRunReRunsOnlyWhenTaskReportedFailed() throws Exception {
+        try (MockWebServer server = new MockWebServer()) {
+            server.start();
+            server.enqueue(json(200, "{\"data\": {\"id\": \"req-a\"}}"));
+            server.enqueue(json(200, "{\"data\": {\"status\": \"failed\", \"error\": \"boom\"}}"));
+            server.enqueue(json(200, "{\"data\": {\"id\": \"req-b\"}}"));
+            server.enqueue(json(200, "{\"data\": {\"status\": \"completed\", \"outputs\": [\"ok\"]}}"));
+
+            Client client = new Client("test-key", server.url("/").toString(), null, 1, 0, 0.01);
+
+            Map<String, Object> result = client.run("wavespeed-ai/z-image/turbo",
+                    Map.of("prompt", "test"), 30.0, 0.01, null, 1);
+
+            assertEquals(List.of("ok"), result.get("outputs"));
+            assertEquals(4, server.getRequestCount());
+        }
+    }
+
+    @Test
+    void testCancelledTaskMentioningTimeoutIsNotReRun() throws Exception {
+        try (MockWebServer server = new MockWebServer()) {
+            server.start();
+            server.enqueue(json(200, "{\"data\": {\"id\": \"req-c\"}}"));
+            server.enqueue(json(200, "{\"data\": {\"status\": \"cancelled\", " +
+                    "\"error\": \"upstream timeout HTTP 503\"}}"));
+            server.enqueue(json(200, "{\"data\": {\"id\": \"req-dup\"}}"));
+
+            Client client = new Client("test-key", server.url("/").toString(), null, 3, 0, 0.01);
+
+            assertThrows(RuntimeException.class, () ->
+                    client.run("wavespeed-ai/z-image/turbo", Map.of("prompt", "test"),
+                            30.0, 0.01, null, 3));
+
+            assertEquals(2, server.getRequestCount());
+        }
+    }
+
+    @Test
+    void testSubmitHttp5xxIsNotRetried() throws Exception {
+        try (MockWebServer server = new MockWebServer()) {
+            server.start();
+            server.enqueue(json(502, "Bad Gateway"));
+            server.enqueue(json(200, "{\"data\": {\"id\": \"req-dup\"}}"));
+
+            Client client = new Client("test-key", server.url("/").toString(), null, 3, 3, 0.01);
+
+            assertThrows(WavespeedSubmissionException.class, () ->
+                    client.run("wavespeed-ai/z-image/turbo", Map.of("prompt", "test"),
+                            30.0, 0.01, null, 3));
+
+            assertEquals(1, server.getRequestCount());
+        }
+    }
+
     // Helper methods
 
     private String getBaseUrl(Client client) {

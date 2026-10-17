@@ -3,6 +3,7 @@ package ai.wavespeed.api;
 import ai.wavespeed.Config;
 import ai.wavespeed.Version;
 import ai.wavespeed.WavespeedSubmissionException;
+import ai.wavespeed.WavespeedTaskFailedException;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import okhttp3.*;
@@ -87,8 +88,12 @@ public class Client {
         double connTimeout = connectionTimeout != null ? connectionTimeout : Config.api.connectionTimeout;
         double totalTimeout = Config.api.timeout;
 
-        // Build HTTP client
+        // Build HTTP client. OkHttp's retryOnConnectionFailure defaults to true and
+        // can silently re-send a request (including the submission POST) after a
+        // connection failure; the task may already exist, so disable it. Result
+        // polling retries explicitly in getResult().
         this.httpClient = new OkHttpClient.Builder()
+                .retryOnConnectionFailure(false)
                 .connectTimeout((long) (connTimeout * 1000), TimeUnit.MILLISECONDS)
                 .readTimeout((long) (totalTimeout * 1000), TimeUnit.MILLISECONDS)
                 .build();
@@ -324,6 +329,10 @@ public class Client {
                 .build();
     }
 
+    private static boolean isRetryableStatus(int code) {
+        return code == 429 || code == 500 || code == 502 || code == 503 || code == 504;
+    }
+
     /**
      * Get prediction result.
      *
@@ -352,6 +361,12 @@ public class Client {
                 try (Response response = callClient.newCall(request).execute()) {
                     if (response.code() != 200) {
                         String errorBody = response.body() != null ? response.body().string() : "";
+                        // Polling is a read-only GET: transient gateway/rate-limit
+                        // responses are retried like connection errors (same set as
+                        // the Python SDK's _RETRYABLE_STATUS_CODES).
+                        if (isRetryableStatus(response.code())) {
+                            throw new IOException("HTTP " + response.code() + ": " + errorBody);
+                        }
                         throw new RuntimeException(
                                 "Failed to get result for task " + requestId + ": HTTP " +
                                         response.code() + ": " + errorBody
@@ -378,14 +393,14 @@ public class Client {
                         Thread.currentThread().interrupt();
                         throw new RuntimeException(
                                 "Failed to get result for task " + requestId + " after " +
-                                        (maxConnectionRetries + 1) + " attempts",
+                                        (maxConnectionRetries + 1) + " attempts: " + e.getMessage(),
                                 e
                         );
                     }
                 } else {
                     throw new RuntimeException(
                             "Failed to get result for task " + requestId + " after " +
-                                    (maxConnectionRetries + 1) + " attempts",
+                                    (maxConnectionRetries + 1) + " attempts: " + e.getMessage(),
                             e
                     );
                 }
@@ -437,10 +452,12 @@ public class Client {
             if ("failed".equals(status) || "cancelled".equals(status) ||
                     "timeout".equals(status) || "deleted".equals(status)) {
                 String error = (String) data.get("error");
-                throw new RuntimeException(
-                        "Prediction " + status + " (task_id: " + requestId + "): " +
-                                (error != null ? error : "Unknown error")
-                );
+                String message = "Prediction " + status + " (task_id: " + requestId + "): " +
+                        (error != null ? error : "Unknown error");
+                if ("failed".equals(status)) {
+                    throw new WavespeedTaskFailedException(message);
+                }
+                throw new RuntimeException(message);
             }
 
             try {
@@ -465,20 +482,10 @@ public class Client {
             return false;
         }
 
-        // Retry timeout and connection errors from result-query GETs
-        if (error instanceof IOException) {
-            return true;
-        }
-
-        // Retry server errors (5xx) and rate limiting (429)
-        if (error instanceof RuntimeException) {
-            String errorStr = error.getMessage();
-            if (errorStr != null && (errorStr.contains("HTTP 5") || errorStr.contains("HTTP 429"))) {
-                return true;
-            }
-        }
-
-        return false;
+        // Re-run only when the task itself reported failure. Poll-side HTTP
+        // errors, poll timeouts and wait timeouts leave a task that already
+        // exists (and may be billed), so they must not lead to another POST.
+        return error instanceof WavespeedTaskFailedException;
     }
 
     private String getResultUrl(Map<String, Object> data) {
@@ -564,7 +571,11 @@ public class Client {
                     String status = (String) data.get("status");
 
                     if (!"completed".equals(status)) {
-                        throw new RuntimeException(syncModeErrorMessage(data));
+                        String message = syncModeErrorMessage(data);
+                        if ("failed".equals(status)) {
+                            throw new WavespeedTaskFailedException(message);
+                        }
+                        throw new RuntimeException(message);
                     }
 
                     Map<String, Object> output = new HashMap<>();
